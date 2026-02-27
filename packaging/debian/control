@@ -1,0 +1,31 @@
+Source: peek
+Section: utils
+Priority: optional
+Maintainer: peek contributors <peek@example.com>
+Build-Depends: debhelper-compat (= 13), cargo, rustc (>= 1.70)
+Standards-Version: 4.6.2
+Homepage: https://github.com/ankittk/peek
+Rules-Requires-Root: no
+
+Package: peek
+Architecture: amd64 arm64
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Process intelligence tool for Linux
+ peek is a single, unified CLI tool that explains what a Linux process is,
+ what it is doing, how it is consuming system resources, and gives intelligent
+ options to act on that knowledge — all in plain English.
+ .
+ Features: live TUI dashboard, resource sparklines, kernel context, network
+ inspector, open file listing, environment variable redaction (secrets auto-
+ hidden), process tree, signal impact pre-flight analysis, systemd integration,
+ and JSON/HTML/Markdown/PDF export.
+
+Package: peekd
+Architecture: amd64 arm64
+Depends: peek (= ${binary:Version}), ${shlibs:Depends}, ${misc:Depends}
+Description: Background daemon for peek resource history and alerting
+ peekd is the optional background daemon for the peek process intelligence
+ tool. It samples watched processes every second into a ring buffer, exposes
+ a Unix socket for peek --history queries, and fires configurable threshold
+ alerts for CPU, memory, FD count, and thread count.
+

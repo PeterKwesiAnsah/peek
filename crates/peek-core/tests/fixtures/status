@@ -1,0 +1,13 @@
+Name:   nginx
+Umask:  0002
+State:  S (sleeping)
+Tgid:   1234
+Ngid:   0
+Pid:    1234
+PPid:   1
+TracerPid:      0
+Uid:    33      33      33      33
+Gid:    33      33      33      33
+Threads:        4
+Seccomp:        2
+voluntary_ctxt_switches:        1523

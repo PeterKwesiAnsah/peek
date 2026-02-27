@@ -1,0 +1,29 @@
+[package]
+name = "peek-cli"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "peek"
+path = "src/main.rs"
+
+[dependencies]
+anyhow     = { workspace = true }
+chrono     = { workspace = true }
+clap       = { workspace = true }
+owo-colors = { workspace = true }
+serde      = { workspace = true }
+serde_json = { workspace = true }
+peek-core  = { path = "../peek-core" }
+sysinfo    = { workspace = true }
+ratatui    = { workspace = true }
+crossterm  = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+procfs = { workspace = true }
+nix   = { workspace = true }
+
+[build-dependencies]
+clap          = { workspace = true }
+clap_complete = { workspace = true }
+clap_mangen   = { workspace = true }

@@ -1,0 +1,37 @@
+[Unit]
+Description=peekd — peek background daemon for resource history and alerting
+Documentation=man:peekd(8) https://github.com/ankittk/peek
+After=network.target
+ConditionVirtualization=!container
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/peekd
+Restart=on-failure
+RestartSec=5s
+
+# Runtime directory for the Unix socket
+RuntimeDirectory=peekd
+RuntimeDirectoryMode=0755
+
+# Security hardening
+# (run as root so it can read /proc for any UID;
+#  use DynamicUser if you only need to monitor same-UID processes)
+User=root
+Group=root
+
+# Resource limits — peekd is designed to be lightweight
+MemoryMax=64M
+CPUQuota=5%
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=peekd
+
+# Environment
+Environment=RUST_LOG=info
+
+[Install]
+WantedBy=multi-user.target
+
