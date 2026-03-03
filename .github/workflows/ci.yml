@@ -21,6 +21,8 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Test
         run: cargo test --workspace
+      - name: Add musl target
+        run: rustup target add x86_64-unknown-linux-musl
       - name: Build release (x86_64 musl)
         run: cargo build --target x86_64-unknown-linux-musl --release
 
@@ -36,7 +38,7 @@ jobs:
       - name: Install cargo-llvm-cov
         run: cargo install cargo-llvm-cov
       - name: Coverage
-        run: cargo llvm-cov run --lcov --output-path lcov.info --workspace
+        run: cargo llvm-cov test --workspace --lcov --output-path lcov.info
       - uses: codecov/codecov-action@v4
         continue-on-error: true
         with:
