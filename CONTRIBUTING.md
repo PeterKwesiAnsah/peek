@@ -1,51 +1,51 @@
-## Contributing to `peek`
+# Contributing to peek
 
-Thank you for your interest in improving `peek` — the Process Intelligence Tool for Linux.
+Thank you for your interest in contributing. This document explains how to build, test, and submit changes.
 
-### Development setup
+## Development setup
 
-- Install the Rust toolchain (stable) from `https://rustup.rs`.
-- Clone the repository:
+- **Rust:** Stable toolchain (install from [rustup.rs](https://rustup.rs)).
+- **Linux:** Full feature set (kernel, network, peekd). macOS/Windows get a subset (see README).
 
 ```bash
-git clone https://github.com/ankittk/peek
+git clone https://github.com/ankittk/peek.git
 cd peek
-```
-
-### Building and running
-
-Workspace build (all crates):
-
-```bash
 cargo build --workspace
 ```
 
-Run the CLI against a real PID:
+## Running checks
+
+Before submitting a PR, please ensure:
 
 ```bash
-cargo run -p peek-cli -- 1           # or any valid PID
-cargo run -p peek-cli -- 1 --all
-cargo run -p peek-cli -- 1 --watch
-```
-
-Run the daemon:
-
-```bash
-cargo run -p peekd
-```
-
-### Tests and checks
-
-```bash
-cargo fmt
-cargo clippy --workspace -- -D warnings
+cargo fmt --check
+cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-### Commit and PR guidelines
+CI runs these on every push to `main` and on pull requests.
 
-- Keep changes focused and self-contained.
-- Add or update tests for any new behaviour (including integration tests in `crates/peek-core/tests/` where appropriate).
-- Run `cargo fmt`, `cargo clippy --workspace -- -D warnings`, and `cargo test --workspace` before opening a PR.
-- Write clear commit messages describing the motivation and behaviour change.
+## Project layout
 
+- `crates/peek-cli` — CLI and TUI binary (`peek`)
+- `crates/peek-core` — Core library: `ProcessInfo`, `collect()`, `collect_extended()`
+- `crates/peekd` — Daemon for history and alerts
+- `crates/proc-reader`, `kernel-explainer`, `resource-sampler`, `network-inspector`, `signal-engine`, `export-engine` — Helper libraries
+
+See [docs/architecture.md](docs/architecture.md) for details.
+
+## Submitting changes
+
+1. Open an issue or comment on an existing one to discuss non-trivial changes.
+2. Fork the repo, create a branch, and make your changes.
+3. Run `cargo fmt`, `cargo clippy`, and `cargo test` as above.
+4. Open a pull request with a clear description. Reference any related issues.
+
+## Code style
+
+- Follow `cargo fmt` and `cargo clippy` (we use `-D warnings` in CI).
+- Prefer clear names and short functions. Add doc comments for public APIs.
+
+## License
+
+By contributing, you agree that your contributions will be licensed under the MIT License.

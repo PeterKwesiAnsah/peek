@@ -17,9 +17,22 @@ fn parse_environ_fixture() {
     let mut vars = Vec::new();
 
     const SECRET_PATTERNS: &[&str] = &[
-        "PASSWORD", "PASSWD", "SECRET", "TOKEN", "API_KEY", "APIKEY",
-        "AUTH", "CREDENTIAL", "PRIVATE_KEY", "ACCESS_KEY", "AWS_SECRET",
-        "DATABASE_URL", "DB_URL", "REDIS_URL", "MONGO_URL", "DSN",
+        "PASSWORD",
+        "PASSWD",
+        "SECRET",
+        "TOKEN",
+        "API_KEY",
+        "APIKEY",
+        "AUTH",
+        "CREDENTIAL",
+        "PRIVATE_KEY",
+        "ACCESS_KEY",
+        "AWS_SECRET",
+        "DATABASE_URL",
+        "DB_URL",
+        "REDIS_URL",
+        "MONGO_URL",
+        "DSN",
     ];
 
     fn is_secret(key: &str) -> bool {
@@ -30,7 +43,9 @@ fn parse_environ_fixture() {
     // /proc/<pid>/environ uses null-separated entries; fixture may use null or newline
     let sep = if fixture.contains(&0) { 0u8 } else { b'\n' };
     for entry in fixture.split(move |&b| b == sep) {
-        if entry.is_empty() { continue; }
+        if entry.is_empty() {
+            continue;
+        }
         let s = String::from_utf8_lossy(entry);
         if let Some(eq) = s.find('=') {
             let key = s[..eq].to_string();
@@ -61,7 +76,8 @@ fn parse_environ_fixture() {
 fn parse_status_fixture() {
     let raw = std::fs::read_to_string(fixtures_dir().join("status")).unwrap();
 
-    let uid: u32 = raw.lines()
+    let uid: u32 = raw
+        .lines()
         .find(|l| l.starts_with("Uid:"))
         .and_then(|l| l.split_whitespace().nth(1))
         .unwrap()
@@ -69,7 +85,8 @@ fn parse_status_fixture() {
         .unwrap();
     assert_eq!(uid, 33, "ruid should be 33 (www-data)");
 
-    let threads: i32 = raw.lines()
+    let threads: i32 = raw
+        .lines()
         .find(|l| l.starts_with("Threads:"))
         .and_then(|l| l.split_whitespace().nth(1))
         .unwrap()
@@ -77,7 +94,8 @@ fn parse_status_fixture() {
         .unwrap();
     assert_eq!(threads, 4);
 
-    let seccomp: u32 = raw.lines()
+    let seccomp: u32 = raw
+        .lines()
         .find(|l| l.starts_with("Seccomp:"))
         .and_then(|l| l.split_whitespace().nth(1))
         .unwrap()
@@ -85,7 +103,8 @@ fn parse_status_fixture() {
         .unwrap();
     assert_eq!(seccomp, 2, "seccomp filter mode");
 
-    let vol: u64 = raw.lines()
+    let vol: u64 = raw
+        .lines()
         .find(|l| l.starts_with("voluntary_ctxt_switches:"))
         .and_then(|l| l.split_whitespace().nth(1))
         .unwrap()
@@ -128,12 +147,13 @@ fn parse_stat_fixture() {
 #[test]
 fn parse_statm_fixture() {
     let raw = std::fs::read_to_string(fixtures_dir().join("statm")).unwrap();
-    let fields: Vec<u64> = raw.split_whitespace()
+    let fields: Vec<u64> = raw
+        .split_whitespace()
         .filter_map(|s| s.parse().ok())
         .collect();
 
     assert!(fields.len() >= 2);
-    let size_pages = fields[0];     // total VM pages
+    let size_pages = fields[0]; // total VM pages
     let resident_pages = fields[1]; // resident pages
 
     let vm_size_kb = size_pages * 4;
@@ -150,7 +170,7 @@ fn parse_cgroup_fixture() {
     let raw = std::fs::read_to_string(fixtures_dir().join("cgroup")).unwrap();
     let unit: Option<String> = raw.lines().find_map(|line| {
         let path = line.splitn(3, ':').nth(2)?;
-        let leaf = path.split('/').last()?;
+        let leaf = path.split('/').next_back()?;
         if leaf.ends_with(".service") || leaf.ends_with(".scope") {
             Some(leaf.to_string())
         } else {
@@ -182,10 +202,12 @@ fn collect_extended_resources_self() {
         resources: true,
         ..Default::default()
     };
-    let info = peek_core::collect_extended(pid, &opts)
-        .expect("collect_extended should succeed");
+    let info = peek_core::collect_extended(pid, &opts).expect("collect_extended should succeed");
 
-    assert!(info.fd_count.unwrap_or(0) > 0, "should have at least some FDs");
+    assert!(
+        info.fd_count.unwrap_or(0) > 0,
+        "should have at least some FDs"
+    );
 }
 
 #[test]
@@ -212,7 +234,10 @@ fn collect_extended_env_self() {
     let info = peek_core::collect_extended(pid, &opts).unwrap();
     let env = info.env_vars.expect("env vars should be collected");
     // PATH is set in virtually every process
-    assert!(env.iter().any(|v| v.key == "PATH"), "PATH should be in environment");
+    assert!(
+        env.iter().any(|v| v.key == "PATH"),
+        "PATH should be in environment"
+    );
 }
 
 #[test]
@@ -231,27 +256,40 @@ fn collect_nonexistent_pid_returns_not_found() {
 fn ring_buf_wraps_correctly() {
     use peek_core::ringbuf::RingBuf;
     let mut rb: RingBuf<u32> = RingBuf::new(4);
-    for i in 0..8u32 { rb.push(i); }
+    for i in 0..8u32 {
+        rb.push(i);
+    }
     assert_eq!(rb.len(), 4);
     assert_eq!(rb.to_vec(), vec![4, 5, 6, 7]);
 }
 
 #[test]
 fn fd_leak_detector_integration() {
-    use peek_core::ringbuf::{detect_fd_leak, RingBuf, ResourceSample};
+    use peek_core::ringbuf::{detect_fd_leak, ResourceSample, RingBuf};
 
     let mut rb: RingBuf<ResourceSample> = RingBuf::new(20);
 
     // Stable FD count — no leak
     for _ in 0..12 {
-        rb.push(ResourceSample { fd_count: 30, ..Default::default() });
+        rb.push(ResourceSample {
+            fd_count: 30,
+            ..Default::default()
+        });
     }
-    assert!(detect_fd_leak(&rb, 8).is_none(), "stable FDs should not trigger");
+    assert!(
+        detect_fd_leak(&rb, 8).is_none(),
+        "stable FDs should not trigger"
+    );
 
     // Suddenly growing FD count
     for i in 0..10u64 {
-        rb.push(ResourceSample { fd_count: 30 + i, ..Default::default() });
+        rb.push(ResourceSample {
+            fd_count: 30 + i,
+            ..Default::default()
+        });
     }
-    assert!(detect_fd_leak(&rb, 8).is_some(), "growing FDs should trigger leak warning");
+    assert!(
+        detect_fd_leak(&rb, 8).is_some(),
+        "growing FDs should trigger leak warning"
+    );
 }
-

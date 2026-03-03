@@ -54,7 +54,9 @@ fn count_tcp_connections(pid: i32) -> usize {
         if let Ok(raw) = std::fs::read_to_string(path) {
             for line in raw.lines().skip(1) {
                 let fields: Vec<&str> = line.split_whitespace().collect();
-                if fields.len() < 10 { continue; }
+                if fields.len() < 10 {
+                    continue;
+                }
                 let inode: u64 = fields[9].parse().unwrap_or(0);
                 if inodes.contains(&inode) {
                     // State 01 = ESTABLISHED, 0A = LISTEN (skip listen)
@@ -114,7 +116,7 @@ fn check_file_locks(pid: i32) -> bool {
             let fields: Vec<&str> = line.split_whitespace().collect();
             // Field index 4 is the PID for POSIX locks; 5 for OFD locks
             for &idx in &[4usize, 5usize] {
-                if fields.get(idx).map(|s| *s) == Some(&pid_str) {
+                if fields.get(idx).copied() == Some(pid_str.as_str()) {
                     // Only flag EXCLUSIVE (WRITE) locks
                     if fields.get(3).map(|s| s.contains("WRITE")).unwrap_or(false) {
                         return true;
@@ -134,7 +136,7 @@ fn detect_systemd_unit(pid: i32) -> Option<String> {
         // Both cgroups v1 and v2 encode the unit name in the path
         let path = line.splitn(3, ':').nth(2)?;
         // Extract the leaf component
-        let leaf = path.split('/').last()?;
+        let leaf = path.split('/').next_back()?;
         if leaf.ends_with(".service") || leaf.ends_with(".scope") {
             return Some(leaf.to_string());
         }
@@ -167,7 +169,9 @@ fn build_recommendation(
         ));
     }
     if locks {
-        points.push("process holds exclusive file lock(s) — hard kill may leave stale locks".to_string());
+        points.push(
+            "process holds exclusive file lock(s) — hard kill may leave stale locks".to_string(),
+        );
         prefer_graceful = true;
     }
     if let Some(unit) = unit {
@@ -179,12 +183,19 @@ fn build_recommendation(
     }
 
     if points.is_empty() {
-        ("Process appears safe to terminate with SIGKILL.".to_string(), false)
+        (
+            "Process appears safe to terminate with SIGKILL.".to_string(),
+            false,
+        )
     } else {
         let rec = format!(
             "{}{}",
             points.join(". "),
-            if prefer_graceful { ". Graceful stop (SIGTERM) is recommended." } else { "." }
+            if prefer_graceful {
+                ". Graceful stop (SIGTERM) is recommended."
+            } else {
+                "."
+            }
         );
         (rec, prefer_graceful)
     }
@@ -215,4 +226,3 @@ mod tests {
         assert!(msg.contains("systemd"));
     }
 }
-

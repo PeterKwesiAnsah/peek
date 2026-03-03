@@ -24,6 +24,10 @@ pub struct Cli {
     #[arg(short = 'n', long)]
     pub network: bool,
 
+    /// Resolve remote addresses to hostnames (best-effort, time-bounded)
+    #[arg(long)]
+    pub resolve: bool,
+
     /// List open file descriptors
     #[arg(short = 'f', long)]
     pub files: bool,
@@ -56,6 +60,10 @@ pub struct Cli {
     #[arg(short = 'j', long)]
     pub json: bool,
 
+    /// JSON snapshot (captured_at, peek_version, process)
+    #[arg(long)]
+    pub json_snapshot: bool,
+
     /// Disable colour output
     #[arg(long)]
     pub no_color: bool,
@@ -67,6 +75,18 @@ pub struct Cli {
     /// Show resource history (requires peekd daemon)
     #[arg(long)]
     pub history: bool,
+
+    /// List alert rules (requires peekd)
+    #[arg(long)]
+    pub alert_list: bool,
+
+    /// Add alert rule: METRIC GT|LT THRESHOLD (e.g. cpu_percent gt 80). Requires target PID.
+    #[arg(long, value_name = "METRIC OP THRESHOLD", num_args = 3)]
+    pub alert_add: Option<Vec<String>>,
+
+    /// Remove alert rule by rule_id (from --alert-list)
+    #[arg(long, value_name = "RULE_ID")]
+    pub alert_remove: Option<String>,
 
     /// Request elevated privileges via sudo
     #[arg(long)]

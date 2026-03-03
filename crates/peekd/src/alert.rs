@@ -18,9 +18,9 @@ pub enum AlertMetric {
 impl std::fmt::Display for AlertMetric {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AlertMetric::CpuPercent  => write!(f, "cpu_percent"),
-            AlertMetric::MemoryMb    => write!(f, "memory_mb"),
-            AlertMetric::FdCount     => write!(f, "fd_count"),
+            AlertMetric::CpuPercent => write!(f, "cpu_percent"),
+            AlertMetric::MemoryMb => write!(f, "memory_mb"),
+            AlertMetric::FdCount => write!(f, "fd_count"),
             AlertMetric::ThreadCount => write!(f, "thread_count"),
         }
     }
@@ -62,7 +62,9 @@ pub struct AlertRule {
     pub last_triggered: Option<DateTime<Local>>,
 }
 
-fn default_cooldown() -> u64 { 60 }
+fn default_cooldown() -> u64 {
+    60
+}
 
 /// A fired alert event.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -82,7 +84,9 @@ pub struct AlertEngine {
 }
 
 impl AlertEngine {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     pub fn add_rule(&mut self, rule: AlertRule) {
         self.rules.push(rule);
@@ -90,6 +94,13 @@ impl AlertEngine {
 
     pub fn remove_rules_for_pid(&mut self, pid: i32) {
         self.rules.retain(|r| r.pid != pid);
+    }
+
+    /// Remove a single rule by ID. Returns true if a rule was removed.
+    pub fn remove_rule(&mut self, rule_id: &str) -> bool {
+        let len_before = self.rules.len();
+        self.rules.retain(|r| r.id != rule_id);
+        self.rules.len() < len_before
     }
 
     /// Evaluate all rules against the latest process snapshot.
@@ -100,36 +111,42 @@ impl AlertEngine {
         let mut events = Vec::new();
 
         for rule in &mut self.rules {
-            if rule.pid != info.pid { continue; }
+            if rule.pid != info.pid {
+                continue;
+            }
 
             // Enforce cooldown
             if let Some(last) = rule.last_triggered {
                 let elapsed = now.signed_duration_since(last).num_seconds() as u64;
-                if elapsed < rule.cooldown_secs { continue; }
+                if elapsed < rule.cooldown_secs {
+                    continue;
+                }
             }
 
             let value = match rule.metric {
-                AlertMetric::CpuPercent  => info.cpu_percent.unwrap_or(0.0),
-                AlertMetric::MemoryMb    => info.rss_kb as f64 / 1024.0,
-                AlertMetric::FdCount     => info.fd_count.unwrap_or(0) as f64,
+                AlertMetric::CpuPercent => info.cpu_percent.unwrap_or(0.0),
+                AlertMetric::MemoryMb => info.rss_kb as f64 / 1024.0,
+                AlertMetric::FdCount => info.fd_count.unwrap_or(0) as f64,
                 AlertMetric::ThreadCount => info.threads as f64,
             };
 
             let fired = match rule.comparison {
                 Comparison::GreaterThan => value > rule.threshold,
-                Comparison::LessThan    => value < rule.threshold,
+                Comparison::LessThan => value < rule.threshold,
             };
 
-            if !fired { continue; }
+            if !fired {
+                continue;
+            }
 
             rule.last_triggered = Some(now);
             let event = AlertEvent {
-                rule_id:   rule.id.clone(),
-                pid:       rule.pid,
-                metric:    rule.metric.to_string(),
+                rule_id: rule.id.clone(),
+                pid: rule.pid,
+                metric: rule.metric.to_string(),
                 value,
                 threshold: rule.threshold,
-                ts:        now,
+                ts: now,
             };
 
             // Deliver notification
@@ -161,9 +178,9 @@ fn deliver(method: &NotifyMethod, event: &AlertEvent) {
         }
         NotifyMethod::Script { command } => {
             let cmd = command
-                .replace("{pid}",    &event.pid.to_string())
+                .replace("{pid}", &event.pid.to_string())
                 .replace("{metric}", &event.metric)
-                .replace("{value}",  &format!("{:.2}", event.value));
+                .replace("{value}", &format!("{:.2}", event.value));
             let _ = std::process::Command::new("sh").args(["-c", &cmd]).spawn();
         }
     }
@@ -198,3 +215,85 @@ impl AlertAddRequest {
     }
 }
 
+// ─── Static config (alerts.toml) ─────────────────────────────────────────────
+
+/// Rule as defined in a static config file.
+///
+/// Example `alerts.toml`:
+///
+/// ```toml
+/// [[rules]]
+/// pid = 1234
+/// metric = "cpu_percent"
+/// comparison = "greater_than"
+/// threshold = 80.0
+/// cooldown_secs = 60
+/// notify = { type = "log" }
+/// ```
+#[derive(Debug, Deserialize)]
+pub struct AlertConfig {
+    pub rules: Vec<AlertConfigRule>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AlertConfigRule {
+    pub pid: i32,
+    pub metric: AlertMetric,
+    pub comparison: Comparison,
+    pub threshold: f64,
+    pub cooldown_secs: Option<u64>,
+    pub notify: Option<NotifyMethod>,
+}
+
+/// Load alert rules from alerts.toml into the engine and seed watched PIDs.
+#[cfg(unix)]
+pub fn load_config_into(
+    engine: &mut AlertEngine,
+    watched_pids: &mut Vec<i32>,
+) -> anyhow::Result<()> {
+    use std::fs;
+    use std::path::PathBuf;
+
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
+        candidates.push(PathBuf::from(xdg).join("peek").join("alerts.toml"));
+    } else if let Ok(home) = std::env::var("HOME") {
+        candidates.push(
+            PathBuf::from(home)
+                .join(".config")
+                .join("peek")
+                .join("alerts.toml"),
+        );
+    }
+    candidates.push(PathBuf::from("/etc/peekd/alerts.toml"));
+    candidates.push(PathBuf::from("/etc/peek/alerts.toml"));
+
+    let path = match candidates.into_iter().find(|p| p.exists()) {
+        Some(p) => p,
+        None => return Ok(()), // no config is fine
+    };
+
+    let raw = fs::read_to_string(&path)?;
+    let cfg: AlertConfig = toml::from_str(&raw)?;
+
+    for (idx, rule) in cfg.rules.into_iter().enumerate() {
+        let id = format!("config-{}", idx + 1);
+        let alert_rule = AlertRule {
+            id: id.clone(),
+            pid: rule.pid,
+            metric: rule.metric,
+            comparison: rule.comparison,
+            threshold: rule.threshold,
+            notify: rule.notify.unwrap_or(NotifyMethod::Log),
+            cooldown_secs: rule.cooldown_secs.unwrap_or_else(default_cooldown),
+            last_triggered: None,
+        };
+        if !watched_pids.contains(&rule.pid) {
+            watched_pids.push(rule.pid);
+        }
+        engine.add_rule(alert_rule);
+    }
+
+    tracing::info!("loaded alert rules from {}", path.display());
+    Ok(())
+}

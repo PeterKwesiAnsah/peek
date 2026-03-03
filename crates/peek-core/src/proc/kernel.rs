@@ -1,4 +1,7 @@
 use crate::{KernelInfo, NamespaceEntry};
+use kernel_explainer::capabilities::format_caps;
+use proc_reader::cgroup::read_cgroup;
+use proc_reader::security::read_label;
 
 pub fn collect_kernel(pid: i32) -> anyhow::Result<KernelInfo> {
     let stat_raw = std::fs::read_to_string(format!("/proc/{}/stat", pid))?;
@@ -14,10 +17,11 @@ pub fn collect_kernel(pid: i32) -> anyhow::Result<KernelInfo> {
         .and_then(|s| s.trim().parse::<i32>().ok())
         .unwrap_or(0);
 
-    let cgroup = read_cgroup(pid);
+    let cgroup = read_cgroup(pid).unwrap_or_else(|| "unknown".to_string());
     let namespaces = read_namespaces(pid);
 
     let (cap_permitted, cap_effective, seccomp, vol_ctx, nonvol_ctx) = parse_status(pid);
+    let security_label = read_label(pid);
 
     Ok(KernelInfo {
         sched_policy,
@@ -32,6 +36,7 @@ pub fn collect_kernel(pid: i32) -> anyhow::Result<KernelInfo> {
         seccomp,
         voluntary_ctxt_switches: vol_ctx,
         nonvoluntary_ctxt_switches: nonvol_ctx,
+        security_label,
     })
 }
 
@@ -44,9 +49,18 @@ fn parse_sched(stat_raw: &str) -> (i32, i32, String) {
     };
     let fields: Vec<&str> = after.split_whitespace().collect();
 
-    let priority = fields.get(15).and_then(|s| s.parse::<i32>().ok()).unwrap_or(0);
-    let nice = fields.get(16).and_then(|s| s.parse::<i32>().ok()).unwrap_or(0);
-    let policy_num = fields.get(38).and_then(|s| s.parse::<u32>().ok()).unwrap_or(0);
+    let priority = fields
+        .get(15)
+        .and_then(|s| s.parse::<i32>().ok())
+        .unwrap_or(0);
+    let nice = fields
+        .get(16)
+        .and_then(|s| s.parse::<i32>().ok())
+        .unwrap_or(0);
+    let policy_num = fields
+        .get(38)
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(0);
 
     let policy = match policy_num {
         0 => "SCHED_OTHER",
@@ -59,21 +73,6 @@ fn parse_sched(stat_raw: &str) -> (i32, i32, String) {
     };
 
     (nice, priority, policy.to_string())
-}
-
-fn read_cgroup(pid: i32) -> String {
-    std::fs::read_to_string(format!("/proc/{}/cgroup", pid))
-        .map(|s| {
-            s.lines()
-                .find(|l| l.starts_with("0:"))
-                .or_else(|| s.lines().next())
-                .map(|l| {
-                    let parts: Vec<&str> = l.splitn(3, ':').collect();
-                    parts.get(2).unwrap_or(&"unknown").to_string()
-                })
-                .unwrap_or_else(|| "unknown".to_string())
-        })
-        .unwrap_or_else(|_| "unknown".to_string())
 }
 
 fn read_namespaces(pid: i32) -> Vec<NamespaceEntry> {
@@ -98,31 +97,23 @@ fn read_namespaces(pid: i32) -> Vec<NamespaceEntry> {
     entries
 }
 
-fn parse_status(
-    pid: i32,
-) -> (
-    String,
-    String,
-    u32,
-    Option<u64>,
-    Option<u64>,
-) {
+fn parse_status(pid: i32) -> (String, String, u32, Option<u64>, Option<u64>) {
     let raw = match std::fs::read_to_string(format!("/proc/{}/status", pid)) {
         Ok(r) => r,
         Err(_) => return ("0".to_string(), "0".to_string(), 0, None, None),
     };
 
-    let mut cap_prm = "0".to_string();
-    let mut cap_eff = "0".to_string();
+    let mut cap_prm_bits = 0u64;
+    let mut cap_eff_bits = 0u64;
     let mut seccomp = 0u32;
     let mut vol_ctx = None;
     let mut nonvol_ctx = None;
 
     for line in raw.lines() {
         if let Some(v) = line.strip_prefix("CapPrm:\t") {
-            cap_prm = decode_caps(v.trim());
+            cap_prm_bits = u64::from_str_radix(v.trim(), 16).unwrap_or(0);
         } else if let Some(v) = line.strip_prefix("CapEff:\t") {
-            cap_eff = decode_caps(v.trim());
+            cap_eff_bits = u64::from_str_radix(v.trim(), 16).unwrap_or(0);
         } else if let Some(v) = line.strip_prefix("Seccomp:\t") {
             seccomp = v.trim().parse().unwrap_or(0);
         } else if let Some(v) = line.strip_prefix("voluntary_ctxt_switches:\t") {
@@ -132,70 +123,7 @@ fn parse_status(
         }
     }
 
+    let (cap_prm, cap_eff) = format_caps(cap_prm_bits, cap_eff_bits);
+
     (cap_prm, cap_eff, seccomp, vol_ctx, nonvol_ctx)
 }
-
-fn decode_caps(hex: &str) -> String {
-    let val = u64::from_str_radix(hex, 16).unwrap_or(0);
-    if val == 0 {
-        return "none".to_string();
-    }
-
-    const CAP_NAMES: &[&str] = &[
-        "CHOWN",
-        "DAC_OVERRIDE",
-        "DAC_READ_SEARCH",
-        "FOWNER",
-        "FSETID",
-        "KILL",
-        "SETGID",
-        "SETUID",
-        "SETPCAP",
-        "LINUX_IMMUTABLE",
-        "NET_BIND_SERVICE",
-        "NET_BROADCAST",
-        "NET_ADMIN",
-        "NET_RAW",
-        "IPC_LOCK",
-        "IPC_OWNER",
-        "SYS_MODULE",
-        "SYS_RAWIO",
-        "SYS_CHROOT",
-        "SYS_PTRACE",
-        "SYS_PACCT",
-        "SYS_ADMIN",
-        "SYS_BOOT",
-        "SYS_NICE",
-        "SYS_RESOURCE",
-        "SYS_TIME",
-        "SYS_TTY_CONFIG",
-        "MKNOD",
-        "LEASE",
-        "AUDIT_WRITE",
-        "AUDIT_CONTROL",
-        "SETFCAP",
-        "MAC_OVERRIDE",
-        "MAC_ADMIN",
-        "SYSLOG",
-        "WAKE_ALARM",
-        "BLOCK_SUSPEND",
-        "AUDIT_READ",
-        "PERFMON",
-        "BPF",
-        "CHECKPOINT_RESTORE",
-    ];
-
-    let caps: Vec<&str> = CAP_NAMES
-        .iter()
-        .enumerate()
-        .filter(|(i, _)| val & (1u64 << i) != 0)
-        .map(|(_, name)| *name)
-        .collect();
-
-    if caps.is_empty() {
-        hex.to_string()
-    } else {
-        caps.join(", ")
-    }
-}
-

@@ -2,6 +2,8 @@
 name = "peekd"
 version = "0.1.0"
 edition = "2021"
+description = "Background daemon for peek resource history and alerting"
+license = "MIT"
 
 [dependencies]
 anyhow          = { workspace = true }
@@ -12,4 +14,24 @@ serde_json      = { workspace = true }
 tokio           = { workspace = true }
 tracing         = { workspace = true }
 tracing-subscriber = { workspace = true }
+toml            = "0.8"
 
+# Packaging: cargo-deb (Debian/Ubuntu .deb)
+[package.metadata.deb]
+name = "peekd"
+section = "utils"
+priority = "optional"
+depends = ["peek"]
+copyright = "MIT License. See LICENSE."
+assets = [
+  ["target/release/peekd", "usr/bin/", "755"],
+  ["../../packaging/peekd.service", "lib/systemd/system/", "644"],
+]
+
+# Packaging: cargo-generate-rpm (Fedora/RHEL .rpm)
+[package.metadata.generate-rpm]
+release = "1"
+assets = [
+  { source = "target/release/peekd", dest = "/usr/bin/", mode = "0755" },
+  { source = "../../packaging/peekd.service", dest = "/usr/lib/systemd/system/", mode = "0644" },
+]

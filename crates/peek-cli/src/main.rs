@@ -1,22 +1,25 @@
-mod cli;
+mod args;
 #[cfg(unix)]
 mod peekd_client;
 mod tui;
+mod ui;
 
 use std::io::{self, Write};
 use std::time::Duration;
 
 use anyhow::Result;
+use args::Cli;
+use chrono::Utc;
 use clap::Parser;
-use cli::Cli;
-use owo_colors::OwoColorize;
-use peek_core::{
-    collect, collect_extended, signal_impact, CollectOptions, PeekError, ProcessInfo, ProcessNode,
-};
+use export_engine::{export_pdf, render_html, render_markdown, to_json, ProcessSnapshot};
 #[cfg(target_os = "linux")]
 use nix::sys::signal::{kill, Signal};
 #[cfg(target_os = "linux")]
 use nix::unistd::Pid;
+use owo_colors::OwoColorize;
+use peek_core::{
+    collect, collect_extended, signal_impact, CollectOptions, PeekError, ProcessInfo, ProcessNode,
+};
 
 fn main() {
     if let Err(err) = run() {
@@ -33,13 +36,21 @@ fn run() -> Result<()> {
         return run_port_search(port);
     }
 
+    // Alert management (requires peekd; no target for list/remove)
+    if cli.alert_list {
+        return run_alert_list();
+    }
+    if let Some(ref rule_id) = cli.alert_remove {
+        return run_alert_remove(rule_id);
+    }
+
     if cli.all {
         cli.resources = true;
-        cli.kernel    = true;
-        cli.network   = true;
-        cli.files     = true;
-        cli.env       = true;
-        cli.tree      = true;
+        cli.kernel = true;
+        cli.network = true;
+        cli.files = true;
+        cli.env = true;
+        cli.tree = true;
     }
 
     // Re-launch under sudo
@@ -58,11 +69,18 @@ fn run() -> Result<()> {
         sudo_args.push(exe.to_string_lossy().into_owned());
         sudo_args.extend(filtered);
 
-        let status = std::process::Command::new("sudo").args(&sudo_args).status()?;
+        let status = std::process::Command::new("sudo")
+            .args(&sudo_args)
+            .status()?;
         std::process::exit(status.code().unwrap_or(1));
     }
 
     let pid = resolve_target(&cli)?;
+
+    // --alert-add: add alert rule for this PID
+    if let Some(ref args) = cli.alert_add {
+        return run_alert_add(pid, args);
+    }
 
     // --diff: side-by-side comparison
     if let Some(pid2) = cli.diff {
@@ -85,7 +103,12 @@ fn run() -> Result<()> {
 
     // --export
     if let Some(ref fmt) = cli.export {
-        return run_export(&info, fmt);
+        let snapshot = ProcessSnapshot {
+            captured_at: Utc::now(),
+            peek_version: env!("CARGO_PKG_VERSION").to_string(),
+            process: info.clone(),
+        };
+        return run_export(&snapshot, fmt);
     }
 
     // --kill
@@ -93,7 +116,18 @@ fn run() -> Result<()> {
         return run_kill_panel(pid, &info);
     }
 
-    // --json
+    // --json-snapshot
+    if cli.json_snapshot {
+        let snapshot = ProcessSnapshot {
+            captured_at: Utc::now(),
+            peek_version: env!("CARGO_PKG_VERSION").to_string(),
+            process: info.clone(),
+        };
+        println!("{}", to_json(&snapshot)?);
+        return Ok(());
+    }
+
+    // --json (backwards-compatible raw ProcessInfo)
     if cli.json {
         println!("{}", serde_json::to_string_pretty(&info)?);
         return Ok(());
@@ -108,12 +142,12 @@ fn run() -> Result<()> {
 fn make_opts(cli: &Cli) -> CollectOptions {
     CollectOptions {
         resources: cli.resources || cli.all,
-        kernel:    cli.kernel    || cli.all,
-        network:   cli.network   || cli.all,
-        files:     cli.files     || cli.all,
-        env:       cli.env       || cli.all,
-        tree:      cli.tree      || cli.all,
-        gpu:       cli.all,
+        kernel: cli.kernel || cli.all,
+        network: cli.network || cli.all,
+        files: cli.files || cli.all,
+        env: cli.env || cli.all,
+        tree: cli.tree || cli.all,
+        gpu: cli.all,
     }
 }
 
@@ -138,12 +172,20 @@ fn run_diff(pid1: i32, pid2: i32) -> Result<()> {
         };
     }
 
-    row!("State",    &i1.state,                    &i2.state);
-    row!("PPID",     i1.ppid.to_string(),           i2.ppid.to_string());
-    row!("UID:GID",  format!("{}:{}", i1.uid, i1.gid), format!("{}:{}", i2.uid, i2.gid));
-    row!("Threads",  i1.threads.to_string(),        i2.threads.to_string());
-    row!("RSS (KB)", i1.rss_kb.to_string(),         i2.rss_kb.to_string());
-    row!("VSZ (KB)", i1.vm_size_kb.to_string(),     i2.vm_size_kb.to_string());
+    row!("State", &i1.state, &i2.state);
+    row!("PPID", i1.ppid.to_string(), i2.ppid.to_string());
+    row!(
+        "UID:GID",
+        format!("{}:{}", i1.uid, i1.gid),
+        format!("{}:{}", i2.uid, i2.gid)
+    );
+    row!("Threads", i1.threads.to_string(), i2.threads.to_string());
+    row!("RSS (KB)", i1.rss_kb.to_string(), i2.rss_kb.to_string());
+    row!(
+        "VSZ (KB)",
+        i1.vm_size_kb.to_string(),
+        i2.vm_size_kb.to_string()
+    );
 
     // Delta row for memory
     let rss_delta = i2.rss_kb as i64 - i1.rss_kb as i64;
@@ -157,12 +199,133 @@ fn run_diff(pid1: i32, pid2: i32) -> Result<()> {
     Ok(())
 }
 
+// ─── Alerts (peekd) ───────────────────────────────────────────────────────────
+
+#[cfg(not(unix))]
+fn run_alert_list() -> Result<()> {
+    eprintln!(
+        "{}",
+        "peekd (alerts) is only available on Linux/Unix.".yellow()
+    );
+    std::process::exit(1);
+}
+
+#[cfg(not(unix))]
+fn run_alert_remove(_rule_id: &str) -> Result<()> {
+    eprintln!(
+        "{}",
+        "peekd (alerts) is only available on Linux/Unix.".yellow()
+    );
+    std::process::exit(1);
+}
+
+#[cfg(not(unix))]
+fn run_alert_add(_pid: i32, _args: &[String]) -> Result<()> {
+    eprintln!(
+        "{}",
+        "peekd (alerts) is only available on Linux/Unix.".yellow()
+    );
+    std::process::exit(1);
+}
+
+#[cfg(unix)]
+fn run_alert_list() -> Result<()> {
+    if !peekd_client::ping() {
+        eprintln!(
+            "{}",
+            "peekd is not running. Start it with: sudo systemctl start peekd (or from repo: sudo mkdir -p /run/peekd && sudo ./target/release/peekd &)".yellow()
+        );
+        std::process::exit(1);
+    }
+    let rules = peekd_client::alert_list()?;
+    if rules.is_empty() {
+        println!("No alert rules.");
+        return Ok(());
+    }
+    println!();
+    println!("{}", "ALERT RULES".bold());
+    println!("{}", "─".repeat(70));
+    println!(
+        "{:<28} {:>8} {:>14} {:>10} {:>8}",
+        "Rule ID", "PID", "Metric", "Threshold", "Cooldown"
+    );
+    println!("{}", "─".repeat(70));
+    for r in &rules {
+        println!(
+            "{:<28} {:>8} {:>14} {:>10.1} {:>8}",
+            r.id, r.pid, r.metric, r.threshold, r.cooldown_secs
+        );
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn run_alert_remove(rule_id: &str) -> Result<()> {
+    if !peekd_client::ping() {
+        eprintln!(
+            "{}",
+            "peekd is not running. Start it with: sudo systemctl start peekd (or from repo: sudo mkdir -p /run/peekd && sudo ./target/release/peekd &)".yellow()
+        );
+        std::process::exit(1);
+    }
+    let removed = peekd_client::alert_remove(rule_id)?;
+    if removed {
+        println!("{} Removed rule {}", "✓".green(), rule_id.cyan());
+    } else {
+        eprintln!("{} No rule with id '{}'", "⚠".yellow(), rule_id);
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn run_alert_add(pid: i32, args: &[String]) -> Result<()> {
+    if !peekd_client::ping() {
+        eprintln!(
+            "{}",
+            "peekd is not running. Start it with: sudo systemctl start peekd (or from repo: sudo mkdir -p /run/peekd && sudo ./target/release/peekd &)".yellow()
+        );
+        std::process::exit(1);
+    }
+    let (metric, op, threshold_str) = match (args.first(), args.get(1), args.get(2)) {
+        (Some(m), Some(o), Some(t)) => (m.as_str(), o.as_str(), t.as_str()),
+        _ => {
+            eprintln!(
+                "{}",
+                "peek --alert-add requires METRIC OP THRESHOLD (e.g. cpu_percent gt 80)".yellow()
+            );
+            std::process::exit(1);
+        }
+    };
+    let threshold: f64 = threshold_str
+        .parse()
+        .map_err(|_| anyhow::anyhow!("invalid threshold '{}', expected a number", threshold_str))?;
+    let valid_metrics = ["cpu_percent", "memory_mb", "fd_count", "thread_count"];
+    if !valid_metrics.contains(&metric) {
+        anyhow::bail!(
+            "invalid metric '{}'; choose one of: {}",
+            metric,
+            valid_metrics.join(", ")
+        );
+    }
+    let rule_id = peekd_client::alert_add(pid, metric, op, threshold, "log", None)?;
+    println!(
+        "{} Alert rule added: {} (pid {})",
+        "✓".green(),
+        rule_id.cyan(),
+        pid
+    );
+    Ok(())
+}
+
 // ─── History (peekd) ─────────────────────────────────────────────────────────
 
 #[cfg(not(unix))]
 fn run_history(pid: i32, _cli: &Cli) -> Result<()> {
     let _ = pid;
-    eprintln!("{}", "peekd (history) is only available on Linux/Unix.".yellow());
+    eprintln!(
+        "{}",
+        "peekd (history) is only available on Linux/Unix.".yellow()
+    );
     std::process::exit(1);
 }
 
@@ -171,9 +334,12 @@ fn run_history(pid: i32, _cli: &Cli) -> Result<()> {
     if !peekd_client::ping() {
         eprintln!(
             "{}",
-            "peekd is not running. Start it with: sudo systemctl start peekd".yellow()
+            "peekd is not running. Start it with: sudo systemctl start peekd (or from repo: sudo mkdir -p /run/peekd && sudo ./target/release/peekd &)".yellow()
         );
-        eprintln!("{}", "Or register this PID manually: peekd watch <PID>".dimmed());
+        eprintln!(
+            "{}",
+            "Or register this PID manually: peekd watch <PID>".dimmed()
+        );
         std::process::exit(1);
     }
 
@@ -190,16 +356,25 @@ fn run_history(pid: i32, _cli: &Cli) -> Result<()> {
     }
 
     println!();
-    println!("{} — last {} samples", "RESOURCE HISTORY".bold(), samples.len());
+    println!(
+        "{} — last {} samples",
+        "RESOURCE HISTORY".bold(),
+        samples.len()
+    );
     println!("{}", "─".repeat(70));
-    println!("{:<25}  {:>8}  {:>10}  {:>8}", "Time", "CPU%", "RSS MB", "Threads");
+    println!(
+        "{:<25}  {:>8}  {:>10}  {:>8}",
+        "Time", "CPU%", "RSS MB", "Threads"
+    );
     println!("{}", "─".repeat(70));
 
     for s in &samples {
         println!(
             "{:<25}  {:>8}  {:>10}  {:>8}",
             s.ts,
-            s.cpu_percent.map(|c| format!("{:.1}%", c)).unwrap_or_else(|| "-".to_string()),
+            s.cpu_percent
+                .map(|c| format!("{:.1}%", c))
+                .unwrap_or_else(|| "-".to_string()),
             format!("{:.1}", s.rss_kb as f64 / 1024.0),
             s.threads
         );
@@ -213,7 +388,12 @@ fn run_history(pid: i32, _cli: &Cli) -> Result<()> {
         .iter()
         .map(|s| Some(s.rss_kb as f64 / 1024.0))
         .collect();
-    let rss_max = rss_vals.iter().flatten().cloned().fold(0.0f64, f64::max).max(1.0);
+    let rss_max = rss_vals
+        .iter()
+        .flatten()
+        .cloned()
+        .fold(0.0f64, f64::max)
+        .max(1.0);
     print_terminal_sparkline("RSS MB ", &rss_vals, rss_max);
 
     Ok(())
@@ -224,12 +404,16 @@ fn run_history(pid: i32, _cli: &Cli) -> Result<()> {
 #[cfg(not(target_os = "linux"))]
 fn run_port_search(port: u16) -> Result<()> {
     let _ = port;
-    eprintln!("{}", "Port search (--port) is only available on Linux.".yellow());
+    eprintln!(
+        "{}",
+        "Port search (--port) is only available on Linux.".yellow()
+    );
     std::process::exit(1);
 }
 
 #[cfg(target_os = "linux")]
 fn run_port_search(port: u16) -> Result<()> {
+    use network_inspector::tcp::{inodes_using_port, process_socket_inodes};
     use procfs::process::all_processes;
 
     println!();
@@ -239,11 +423,6 @@ fn run_port_search(port: u16) -> Result<()> {
         port
     );
 
-    let opts = CollectOptions {
-        network: true,
-        ..Default::default()
-    };
-
     struct Hit {
         pid: i32,
         name: String,
@@ -252,41 +431,24 @@ fn run_port_search(port: u16) -> Result<()> {
         remote: String,
     }
 
+    let inode_map = inodes_using_port(port);
     let mut hits: Vec<Hit> = Vec::new();
 
     for pr in all_processes()?.flatten() {
         let pid = pr.pid;
-        if let Ok(info) = collect_extended(pid, &opts) {
-            if let Some(net) = &info.network {
-                for s in &net.listening {
-                    if s.local_port == port {
-                        hits.push(Hit {
-                            pid: info.pid,
-                            name: info.name.clone(),
-                            kind: format!("LISTEN/{}", s.protocol),
-                            local: format!("{}:{}", s.local_addr, s.local_port),
-                            remote: "-".to_string(),
-                        });
-                    }
-                }
-                for c in &net.connections {
-                    if c.local_port == port || c.remote_port == port {
-                        let dir = if c.local_port == port && c.remote_port == port {
-                            "both"
-                        } else if c.local_port == port {
-                            "local"
-                        } else {
-                            "remote"
-                        };
-                        hits.push(Hit {
-                            pid: info.pid,
-                            name: info.name.clone(),
-                            kind: format!("CONN/{} ({})", c.protocol, dir),
-                            local: format!("{}:{}", c.local_addr, c.local_port),
-                            remote: format!("{}:{}", c.remote_addr, c.remote_port),
-                        });
-                    }
-                }
+        let name = pr
+            .stat()
+            .map(|s| s.comm.to_string())
+            .unwrap_or_else(|_| pid.to_string());
+        for inode in process_socket_inodes(pid) {
+            if let Some((kind, local, remote)) = inode_map.get(&inode) {
+                hits.push(Hit {
+                    pid,
+                    name: name.clone(),
+                    kind: kind.clone(),
+                    local: local.clone(),
+                    remote: remote.clone(),
+                });
             }
         }
     }
@@ -363,7 +525,10 @@ fn print_terminal_sparkline(label: &str, vals: &[Option<f64>], max: f64) {
 
 #[cfg(not(target_os = "linux"))]
 fn run_kill_panel(_pid: i32, _info: &ProcessInfo) -> Result<()> {
-    eprintln!("{}", "Interactive kill/signal panel is only available on Linux.".yellow());
+    eprintln!(
+        "{}",
+        "Interactive kill/signal panel is only available on Linux.".yellow()
+    );
     std::process::exit(1);
 }
 
@@ -375,7 +540,12 @@ fn run_kill_panel(pid: i32, info: &ProcessInfo) -> Result<()> {
     println!();
     println!("{}", "⚡ PROCESS CONTROL".bold().yellow());
     println!("{}", "─".repeat(66));
-    println!("  Target: {} {} (pid {})", "▶".yellow(), info.name.cyan().bold(), pid);
+    println!(
+        "  Target: {} {} (pid {})",
+        "▶".yellow(),
+        info.name.cyan().bold(),
+        pid
+    );
 
     // Show impact analysis
     if let Some(ref imp) = impact {
@@ -418,7 +588,7 @@ fn run_kill_panel(pid: i32, info: &ProcessInfo) -> Result<()> {
     // Systemd shortcuts
     if let Some(Some(ref unit)) = impact.as_ref().map(|i| i.systemd_unit.as_ref().cloned()) {
         println!();
-        println!("  [s] systemctl stop {}",    unit.cyan());
+        println!("  [s] systemctl stop {}", unit.cyan());
         println!("  [R] systemctl restart {}", unit.cyan());
     }
 
@@ -435,21 +605,23 @@ fn run_kill_panel(pid: i32, info: &ProcessInfo) -> Result<()> {
 
         match choice {
             "1" => return send_signal(pid, Signal::SIGTERM, false),
-            "2" => return send_signal(pid, Signal::SIGKILL,  true),
-            "3" => return send_signal(pid, Signal::SIGSTOP,  false),
-            "4" => return send_signal(pid, Signal::SIGCONT,  false),
-            "5" => return send_signal(pid, Signal::SIGHUP,   false),
-            "6" => return send_signal(pid, Signal::SIGUSR1,  false),
-            "7" => return send_signal(pid, Signal::SIGUSR2,  false),
+            "2" => return send_signal(pid, Signal::SIGKILL, true),
+            "3" => return send_signal(pid, Signal::SIGSTOP, false),
+            "4" => return send_signal(pid, Signal::SIGCONT, false),
+            "5" => return send_signal(pid, Signal::SIGHUP, false),
+            "6" => return send_signal(pid, Signal::SIGUSR1, false),
+            "7" => return send_signal(pid, Signal::SIGUSR2, false),
             "s" => {
-                if let Some(Some(unit)) = impact.as_ref().map(|i| i.systemd_unit.as_ref().cloned()) {
+                if let Some(Some(unit)) = impact.as_ref().map(|i| i.systemd_unit.as_ref().cloned())
+                {
                     run_systemctl("stop", &unit)?;
                     return Ok(());
                 }
                 println!("  No systemd unit detected.");
             }
             "R" => {
-                if let Some(Some(unit)) = impact.as_ref().map(|i| i.systemd_unit.as_ref().cloned()) {
+                if let Some(Some(unit)) = impact.as_ref().map(|i| i.systemd_unit.as_ref().cloned())
+                {
                     run_systemctl("restart", &unit)?;
                     return Ok(());
                 }
@@ -467,7 +639,10 @@ fn run_kill_panel(pid: i32, info: &ProcessInfo) -> Result<()> {
 #[cfg(target_os = "linux")]
 fn send_signal(pid: i32, sig: Signal, require_confirm: bool) -> Result<()> {
     if require_confirm {
-        print!("  ⚠️  Are you sure you want to FORCE KILL pid {}? [y/N]: ", pid);
+        print!(
+            "  ⚠️  Are you sure you want to FORCE KILL pid {}? [y/N]: ",
+            pid
+        );
         io::stdout().flush()?;
         let mut confirm = String::new();
         io::stdin().read_line(&mut confirm)?;
@@ -494,7 +669,10 @@ fn run_systemctl(action: &str, unit: &str) -> Result<()> {
     } else {
         eprintln!(
             "  {} systemctl {} {} exited with status {:?}",
-            "✗".red(), action, unit, status.code()
+            "✗".red(),
+            action,
+            unit,
+            status.code()
         );
     }
     Ok(())
@@ -502,201 +680,21 @@ fn run_systemctl(action: &str, unit: &str) -> Result<()> {
 
 // ─── Export ───────────────────────────────────────────────────────────────────
 
-fn run_export(info: &ProcessInfo, format: &str) -> Result<()> {
+fn run_export(snapshot: &ProcessSnapshot, format: &str) -> Result<()> {
     match format.to_lowercase().as_str() {
-        "json" => println!("{}", serde_json::to_string_pretty(info)?),
-        "md" | "markdown" => println!("{}", render_markdown(info)),
-        "html" => println!("{}", render_html(info)),
-        "pdf" => run_export_pdf(info)?,
+        "json" => println!("{}", to_json(snapshot)?),
+        "md" | "markdown" => println!("{}", render_markdown(snapshot)),
+        "html" => println!("{}", render_html(snapshot)),
+        "pdf" => {
+            let filename = export_pdf(snapshot)?;
+            println!("{} PDF report written to {}", "✓".green(), filename.cyan());
+        }
         other => anyhow::bail!("unknown format '{}' (json | html | md | pdf)", other),
     }
     Ok(())
 }
 
-fn run_export_pdf(info: &ProcessInfo) -> Result<()> {
-    let html = render_html(info);
-
-    // Find a PDF renderer
-    let renderer = ["wkhtmltopdf", "weasyprint", "chromium", "google-chrome"]
-        .iter()
-        .find(|cmd| which_cmd(cmd))
-        .copied();
-
-    let Some(renderer) = renderer else {
-        anyhow::bail!(
-            "PDF export requires wkhtmltopdf, weasyprint, or Chromium. \
-             Install one and try again, or use --export html."
-        );
-    };
-
-    let filename = format!("peek-{}-{}.pdf", info.name, info.pid);
-
-    // Write HTML to a temp file
-    let tmp = std::env::temp_dir().join(format!("peek-{}.html", info.pid));
-    std::fs::write(&tmp, &html)?;
-
-    let status = match renderer {
-        "wkhtmltopdf" => std::process::Command::new("wkhtmltopdf")
-            .args([tmp.to_str().unwrap(), &filename])
-            .status()?,
-        "weasyprint" => std::process::Command::new("weasyprint")
-            .args([tmp.to_str().unwrap(), &filename])
-            .status()?,
-        _ => std::process::Command::new(renderer)
-            .args(["--headless", "--disable-gpu", "--print-to-pdf", &filename,
-                   &format!("file://{}", tmp.display())])
-            .status()?,
-    };
-
-    let _ = std::fs::remove_file(&tmp);
-
-    if status.success() {
-        println!("{} PDF report written to {}", "✓".green(), filename.cyan());
-    } else {
-        anyhow::bail!("{} exited with status {:?}", renderer, status.code());
-    }
-    Ok(())
-}
-
-fn which_cmd(cmd: &str) -> bool {
-    std::process::Command::new("which")
-        .arg(cmd)
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-
-// ─── Markdown export ─────────────────────────────────────────────────────────
-
-fn render_markdown(info: &ProcessInfo) -> String {
-    let mut out = String::new();
-    out.push_str(&format!("# peek report — {} (PID {})\n\n", info.name, info.pid));
-    out.push_str(&format!("> Generated {}\n\n", chrono::Local::now().format("%Y-%m-%d %H:%M:%S")));
-
-    out.push_str("## Process\n\n| Field | Value |\n|---|---|\n");
-    out.push_str(&format!("| Name | `{}` |\n", info.name));
-    out.push_str(&format!("| PID | {} |\n", info.pid));
-    out.push_str(&format!("| PPID | {} |\n", info.ppid));
-    if let Some(exe) = &info.exe {
-        out.push_str(&format!("| Exe | `{}` |\n", exe));
-    }
-    out.push_str(&format!("| Command | `{}` |\n", info.cmdline));
-    out.push_str(&format!("| State | {} |\n", info.state));
-    out.push_str(&format!("| UID:GID | {}:{} |\n", info.uid, info.gid));
-    if let Some(s) = info.started_at { out.push_str(&format!("| Started | {} |\n", s)); }
-    out.push_str(&format!("| Threads | {} |\n", info.threads));
-    out.push_str(&format!("| RSS KB | {} |\n", info.rss_kb));
-    out.push_str(&format!("| VSZ KB | {} |\n", info.vm_size_kb));
-
-    if let Some(cpu) = info.cpu_percent {
-        out.push_str("\n## Resources\n\n| Field | Value |\n|---|---|\n");
-        out.push_str(&format!("| CPU % | {:.1} |\n", cpu));
-        out.push_str(&format!("| RSS KB | {} |\n", info.rss_kb));
-        if let Some(r) = info.io_read_bytes  { out.push_str(&format!("| Disk read | {} B |\n", r)); }
-        if let Some(w) = info.io_write_bytes { out.push_str(&format!("| Disk write | {} B |\n", w)); }
-        if let Some(f) = info.fd_count       { out.push_str(&format!("| Open FDs | {} |\n", f)); }
-    }
-
-    if let Some(k) = &info.kernel {
-        out.push_str("\n## Kernel\n\n| Field | Value |\n|---|---|\n");
-        out.push_str(&format!("| Scheduler | {} |\n", k.sched_policy));
-        out.push_str(&format!("| Nice / Priority | {} / {} |\n", k.nice, k.priority));
-        out.push_str(&format!("| OOM Score | {} / 1000 |\n", k.oom_score));
-        out.push_str(&format!("| OOM Adj | {} |\n", k.oom_score_adj));
-        out.push_str(&format!("| Cgroup | `{}` |\n", k.cgroup));
-        out.push_str(&format!("| Seccomp | {} |\n", k.seccomp));
-        out.push_str(&format!("| Cap Permitted | {} |\n", k.cap_permitted));
-        out.push_str(&format!("| Cap Effective | {} |\n", k.cap_effective));
-    }
-
-    if let Some(net) = &info.network {
-        out.push_str("\n## Network\n\n");
-        if !net.listening.is_empty() {
-            out.push_str("**Listening:**\n\n");
-            for s in &net.listening {
-                out.push_str(&format!("- `{}` {}:{}\n", s.protocol, s.local_addr, s.local_port));
-            }
-        }
-        if !net.connections.is_empty() {
-            out.push_str(&format!("\n**Connections ({}):**\n\n", net.connections.len()));
-            out.push_str("| Proto | Local | Remote | State |\n|---|---|---|---|\n");
-            for c in net.connections.iter().take(30) {
-                out.push_str(&format!(
-                    "| {} | {}:{} | {}:{} | {} |\n",
-                    c.protocol, c.local_addr, c.local_port,
-                    c.remote_addr, c.remote_port, c.state
-                ));
-            }
-        }
-    }
-
-    if let Some(files) = &info.open_files {
-        out.push_str(&format!("\n## Open Files ({} total)\n\n", files.len()));
-        out.push_str("| FD | Type | Path |\n|---|---|---|\n");
-        for f in files.iter().take(50) {
-            out.push_str(&format!("| {} | {} | `{}` |\n", f.fd, f.fd_type, f.description));
-        }
-    }
-
-    if let Some(env_vars) = &info.env_vars {
-        let secrets = env_vars.iter().filter(|v| v.redacted).count();
-        out.push_str(&format!("\n## Environment ({} vars, {} redacted)\n\n", env_vars.len(), secrets));
-        out.push_str("| Key | Value |\n|---|---|\n");
-        for v in env_vars {
-            out.push_str(&format!("| `{}` | {} |\n", v.key, v.value));
-        }
-    }
-
-    if let Some(gpus) = &info.gpu {
-        if !gpus.is_empty() {
-            out.push_str("\n## GPU\n\n| Index | Name | Util% | Mem Used | Mem Total |\n|---|---|---|---|---|\n");
-            for g in gpus {
-                out.push_str(&format!(
-                    "| {} | {} | {:.1} | {:.0} MB | {:.0} MB |\n",
-                    g.index, g.name,
-                    g.utilization_percent.unwrap_or(0.0),
-                    g.memory_used_mb.unwrap_or(0.0),
-                    g.memory_total_mb.unwrap_or(0.0),
-                ));
-            }
-        }
-    }
-
-    out
-}
-
-fn render_html(info: &ProcessInfo) -> String {
-    let md = render_markdown(info);
-    format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>peek — {name} ({pid})</title>
-<style>
-  body{{font-family:monospace;max-width:960px;margin:2rem auto;padding:1rem;background:#0d1117;color:#c9d1d9}}
-  h1{{color:#58a6ff}} h2{{color:#79c0ff;border-bottom:1px solid #30363d;padding-bottom:.3rem;margin-top:2rem}}
-  table{{border-collapse:collapse;width:100%;margin:1rem 0}}
-  th,td{{border:1px solid #30363d;padding:.4rem .8rem;text-align:left}}
-  th{{background:#161b22;color:#58a6ff}}
-  code{{background:#161b22;padding:.1rem .3rem;border-radius:3px;color:#79c0ff}}
-  pre{{background:#161b22;padding:1rem;overflow-x:auto;border-radius:6px}}
-  blockquote{{border-left:4px solid #388bfd;padding-left:1rem;color:#8b949e}}
-</style>
-</head>
-<body>
-<pre><code>{md_esc}</code></pre>
-</body>
-</html>"#,
-        name = info.name,
-        pid = info.pid,
-        md_esc = md.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;"),
-    )
-}
-
 // ─── Plain-text report ───────────────────────────────────────────────────────
-
 fn print_report(info: &ProcessInfo, cli: &Cli) {
     println!();
     println!(
@@ -706,6 +704,9 @@ fn print_report(info: &ProcessInfo, cli: &Cli) {
         format!("(PID {})", info.pid).dimmed()
     );
     println!("{}", "─".repeat(64));
+    if let Some(desc) = peek_core::binary_description(&info.name) {
+        println!("  {} {}", "desc    :".dimmed(), desc);
+    }
     println!("  {} {}", "cmdline :".dimmed(), info.cmdline);
     if let Some(exe) = &info.exe {
         println!("  {} {}", "exe     :".dimmed(), exe);
@@ -715,12 +716,44 @@ fn print_report(info: &ProcessInfo, cli: &Cli) {
     println!("  {} {}:{}", "uid:gid :".dimmed(), info.uid, info.gid);
     if let Some(started) = info.started_at {
         let age = age_string(started);
-        println!("  {} {} ({})", "started :".dimmed(), started.format("%Y-%m-%d %H:%M:%S"), age);
+        println!(
+            "  {} {} ({})",
+            "started :".dimmed(),
+            started.format("%Y-%m-%d %H:%M:%S"),
+            age
+        );
     }
-    println!("  {} {} KB RSS / {} KB VSZ", "memory  :".dimmed(), info.rss_kb, info.vm_size_kb);
+    let mem_extra = match (info.pss_kb, info.swap_kb) {
+        (Some(p), Some(s)) if s > 0 => format!("  |  {} KB PSS  |  {} KB swap", p, s),
+        (Some(p), _) => format!("  |  {} KB PSS", p),
+        (_, Some(s)) if s > 0 => format!("  |  {} KB swap", s),
+        _ => String::new(),
+    };
+    println!(
+        "  {} {} KB RSS / {} KB VSZ{}",
+        "memory  :".dimmed(),
+        info.rss_kb,
+        info.vm_size_kb,
+        mem_extra
+    );
     println!("  {} {}", "threads :".dimmed(), info.threads);
     if let Some(fds) = info.fd_count {
         println!("  {} {}", "open fds:".dimmed(), fds);
+        #[cfg(target_os = "linux")]
+        if let Some(limit) = soft_fd_limit(info.pid) {
+            if limit > 0 {
+                let ratio = fds as f64 / limit as f64;
+                if ratio >= 0.8 {
+                    println!(
+                        "  {} FD usage near soft limit: {}/{} ({:.0}%)",
+                        "warn   :".yellow(),
+                        fds,
+                        limit,
+                        ratio * 100.0
+                    );
+                }
+            }
+        }
     }
 
     // Resources
@@ -730,16 +763,35 @@ fn print_report(info: &ProcessInfo, cli: &Cli) {
         println!("{}", "─".repeat(64));
         if let Some(cpu) = info.cpu_percent {
             let bar = progress_bar(cpu / 100.0, 20);
-            let cs = if cpu > 80.0 { format!("{:.1}%", cpu).red().bold().to_string() }
-                     else if cpu > 50.0 { format!("{:.1}%", cpu).yellow().to_string() }
-                     else { format!("{:.1}%", cpu).green().to_string() };
+            let cs = if cpu > 80.0 {
+                format!("{:.1}%", cpu).red().bold().to_string()
+            } else if cpu > 50.0 {
+                format!("{:.1}%", cpu).yellow().to_string()
+            } else {
+                format!("{:.1}%", cpu).green().to_string()
+            };
             println!("  CPU    {} {}", bar, cs);
         }
         let mem_pct = memory_percent(info.rss_kb);
-        println!("  Memory {} {:.0} MB RSS  ({:.1}% RAM)", progress_bar(mem_pct / 100.0, 20),
-            info.rss_kb / 1024, mem_pct);
-        if let Some(r) = info.io_read_bytes  { println!("  Disk R  {} bytes", r); }
-        if let Some(w) = info.io_write_bytes { println!("  Disk W  {} bytes", w); }
+        let mem_extra = match (info.pss_kb, info.swap_kb) {
+            (Some(p), Some(s)) if s > 0 => format!("  |  PSS {} KB  |  swap {} KB", p, s),
+            (Some(p), _) => format!("  |  PSS {} KB", p),
+            (_, Some(s)) if s > 0 => format!("  |  swap {} KB", s),
+            _ => String::new(),
+        };
+        println!(
+            "  Memory {} {:.0} MB RSS  ({:.1}% RAM){}",
+            progress_bar(mem_pct / 100.0, 20),
+            info.rss_kb / 1024,
+            mem_pct,
+            mem_extra
+        );
+        if let Some(r) = info.io_read_bytes {
+            println!("  Disk R  {} bytes", r);
+        }
+        if let Some(w) = info.io_write_bytes {
+            println!("  Disk W  {} bytes", w);
+        }
     }
 
     // GPU
@@ -754,7 +806,15 @@ fn print_report(info: &ProcessInfo, cli: &Cli) {
                     println!("    Util   {} {:.1}%", progress_bar(u / 100.0, 20), u);
                 }
                 if let (Some(used), Some(total)) = (g.memory_used_mb, g.memory_total_mb) {
-                    println!("    VRAM   {} {:.0}/{:.0} MB", progress_bar(used / total, 20), used, total);
+                    println!(
+                        "    VRAM   {} {:.0}/{:.0} MB",
+                        progress_bar(used / total, 20),
+                        used,
+                        total
+                    );
+                }
+                if let Some(pmb) = g.process_used_mb {
+                    println!("    Process {} {:.0} MB (this PID)", "▶".cyan(), pmb);
                 }
             }
         }
@@ -765,14 +825,30 @@ fn print_report(info: &ProcessInfo, cli: &Cli) {
         println!();
         println!("{}", "🧠 KERNEL CONTEXT".bold());
         println!("{}", "─".repeat(64));
-        println!("  Scheduler  : {} | Nice: {} | Priority: {}", k.sched_policy, k.nice, k.priority);
-        println!("  OOM Score  : {} / 1000  (adj: {})", oom_colored(k.oom_score), k.oom_score_adj);
+        println!(
+            "  Scheduler  : {} | Nice: {} | Priority: {}",
+            k.sched_policy, k.nice, k.priority
+        );
+        println!(
+            "  OOM Score  : {} / 1000  (adj: {}) — {}",
+            oom_colored(k.oom_score),
+            k.oom_score_adj,
+            peek_core::oom_description(k.oom_score)
+        );
+        if let Some(label) = &k.security_label {
+            println!("  Security   : {}", label);
+        }
+        if let Some((name, desc)) = peek_core::current_syscall(info.pid) {
+            println!("  Syscall    : {} — {}", name, desc);
+        }
         println!("  Cgroup     : {}", k.cgroup);
         println!("  Seccomp    : {}", seccomp_label(k.seccomp));
         println!("  Cap Prm    : {}", k.cap_permitted);
         println!("  Cap Eff    : {}", k.cap_effective);
         let ns: Vec<_> = k.namespaces.iter().map(|n| n.ns_type.as_str()).collect();
-        if !ns.is_empty() { println!("  Namespaces : {}", ns.join(", ")); }
+        if !ns.is_empty() {
+            println!("  Namespaces : {}", ns.join(", "));
+        }
         if let (Some(v), Some(nv)) = (k.voluntary_ctxt_switches, k.nonvoluntary_ctxt_switches) {
             println!("  Ctx Sw     : {} voluntary, {} involuntary", v, nv);
         }
@@ -783,18 +859,80 @@ fn print_report(info: &ProcessInfo, cli: &Cli) {
         println!();
         println!("{}", "🌐 NETWORK".bold());
         println!("{}", "─".repeat(64));
-        if net.listening.is_empty() && net.connections.is_empty() {
+        if let (Some(rx), Some(tx)) = (net.traffic_rx_bytes_per_sec, net.traffic_tx_bytes_per_sec) {
+            println!(
+                "  {} Traffic: RX {}  TX {}",
+                "▶".cyan(),
+                format_bytes_per_sec(rx),
+                format_bytes_per_sec(tx)
+            );
+        }
+        let has_listen = !net.listening_tcp.is_empty() || !net.listening_udp.is_empty();
+        let has_unix = net.unix_sockets.as_ref().is_some_and(|u| !u.is_empty());
+        if !has_listen
+            && net.connections.is_empty()
+            && !has_unix
+            && net.traffic_rx_bytes_per_sec.is_none()
+        {
             println!("  No sockets.");
         } else {
-            for s in &net.listening {
-                println!("  {} Listening: {} {}:{}", "▶".green(), s.protocol, s.local_addr, s.local_port);
+            for s in &net.listening_tcp {
+                println!(
+                    "  {} Listening (TCP): {} {}:{}",
+                    "▶".green(),
+                    s.protocol,
+                    s.local_addr,
+                    s.local_port
+                );
+            }
+            for s in &net.listening_udp {
+                println!(
+                    "  {} Listening (UDP): {} {}:{}",
+                    "▶".green(),
+                    s.protocol,
+                    s.local_addr,
+                    s.local_port
+                );
+            }
+            if let Some(unix) = &net.unix_sockets {
+                if !unix.is_empty() {
+                    println!("  {} Unix sockets ({}):", "▶".cyan(), unix.len());
+                    for u in unix.iter().take(15) {
+                        let path = if u.path.is_empty() {
+                            "<anonymous>"
+                        } else {
+                            &u.path
+                        };
+                        println!("    {}", path);
+                    }
+                    if unix.len() > 15 {
+                        println!("    … and {} more", unix.len() - 15);
+                    }
+                }
             }
             if !net.connections.is_empty() {
-                println!("  {} Connections ({}):", "▶".yellow(), net.connections.len());
+                println!(
+                    "  {} Connections ({}):",
+                    "▶".yellow(),
+                    net.connections.len()
+                );
                 for c in net.connections.iter().take(20) {
-                    println!("    {} {}:{} → {}:{} [{}]",
-                        c.protocol, c.local_addr, c.local_port,
-                        c.remote_addr, c.remote_port, c.state.dimmed());
+                    let remote = format!("{}:{}", c.remote_addr, c.remote_port);
+                    let remote_display = if cli.resolve {
+                        peek_core::resolve_remote(&remote)
+                            .map(|h| format!("{} ({})", h, remote))
+                            .unwrap_or(remote)
+                    } else {
+                        remote
+                    };
+                    println!(
+                        "    {} {}:{} → {} [{}]",
+                        c.protocol,
+                        c.local_addr,
+                        c.local_port,
+                        remote_display,
+                        c.state.dimmed()
+                    );
                 }
                 if net.connections.len() > 20 {
                     println!("    … and {} more", net.connections.len() - 20);
@@ -808,12 +946,19 @@ fn print_report(info: &ProcessInfo, cli: &Cli) {
         println!();
         println!("{}", "📁 OPEN FILES".bold());
         println!("{}", "─".repeat(64));
-        println!("  {:>4}  {:>10}  {}", "FD", "Type", "Path");
+        println!("  {:>4}  {:>10}  Path", "FD", "Type");
         println!("  {}", "─".repeat(58));
         for f in files.iter().take(50) {
-            println!("  {:>4}  {:>10}  {}", f.fd, f.fd_type.dimmed(), f.description);
+            println!(
+                "  {:>4}  {:>10}  {}",
+                f.fd,
+                f.fd_type.dimmed(),
+                f.description
+            );
         }
-        if files.len() > 50 { println!("  … {} more", files.len() - 50); }
+        if files.len() > 50 {
+            println!("  … {} more", files.len() - 50);
+        }
         println!("  Total: {}", files.len());
     }
 
@@ -824,13 +969,29 @@ fn print_report(info: &ProcessInfo, cli: &Cli) {
         println!("{}", "─".repeat(64));
         let secrets = env_vars.iter().filter(|v| v.redacted).count();
         if secrets > 0 {
-            println!("  {} {} secret(s) detected and redacted.", "⚠️".yellow(), secrets);
+            println!(
+                "  {} {} secret(s) detected and redacted.",
+                "⚠️".yellow(),
+                secrets
+            );
         }
-        let max_k = env_vars.iter().map(|v| v.key.len()).max().unwrap_or(10).min(40);
+        let max_k = env_vars
+            .iter()
+            .map(|v| v.key.len())
+            .max()
+            .unwrap_or(10)
+            .min(40);
         for v in env_vars {
-            let ks = if v.redacted { v.key.yellow().to_string() } else { v.key.cyan().to_string() };
-            let vs = if v.redacted { format!("{} {}", v.value, "[REDACTED]".red()) }
-                     else { v.value.chars().take(80).collect() };
+            let ks = if v.redacted {
+                v.key.yellow().to_string()
+            } else {
+                v.key.cyan().to_string()
+            };
+            let vs = if v.redacted {
+                format!("{} {}", v.value, "[REDACTED]".red())
+            } else {
+                v.value.chars().take(80).collect()
+            };
             println!("  {:<width$} = {}", ks, vs, width = max_k + 2);
         }
     }
@@ -848,8 +1009,19 @@ fn print_report(info: &ProcessInfo, cli: &Cli) {
 
 fn print_tree(node: &ProcessNode, prefix: &str, is_last: bool, target: i32) {
     let conn = if is_last { "└── " } else { "├── " };
-    let name = if node.pid == target { node.name.cyan().bold().to_string() } else { node.name.clone() };
-    println!("  {}{}{} ({}) [{} MB]", prefix, conn, name, node.pid, node.rss_kb / 1024);
+    let name = if node.pid == target {
+        node.name.cyan().bold().to_string()
+    } else {
+        node.name.clone()
+    };
+    println!(
+        "  {}{}{} ({}) [{} MB]",
+        prefix,
+        conn,
+        name,
+        node.pid,
+        node.rss_kb / 1024
+    );
     let child_pfx = format!("{}{}", prefix, if is_last { "    " } else { "│   " });
     for (i, child) in node.children.iter().enumerate() {
         print_tree(child, &child_pfx, i == node.children.len() - 1, target);
@@ -867,10 +1039,17 @@ fn map_core_error(err: PeekError) -> anyhow::Error {
 
 fn resolve_target(cli: &Cli) -> Result<i32> {
     if let Some(ref t) = cli.target {
-        if let Ok(pid) = t.parse::<i32>() { if pid > 0 { return Ok(pid); } }
+        if let Ok(pid) = t.parse::<i32>() {
+            if pid > 0 {
+                return Ok(pid);
+            }
+        }
         return resolve_by_name(t);
     }
-    eprintln!("{}", "peek: no target given. Usage: peek <PID|name> [options]".yellow());
+    eprintln!(
+        "{}",
+        "peek: no target given. Usage: peek <PID|name> [options]".yellow()
+    );
     std::process::exit(1);
 }
 
@@ -880,16 +1059,25 @@ fn resolve_by_name(name: &str) -> Result<i32> {
     let mut matches = Vec::new();
     for pr in all_processes()?.flatten() {
         if let Ok(stat) = pr.stat() {
-            if stat.comm == name { matches.push(pr.pid); continue; }
+            if stat.comm == name {
+                matches.push(pr.pid);
+                continue;
+            }
         }
         if let Ok(cmdline) = pr.cmdline() {
-            if cmdline.join(" ").contains(name) { matches.push(pr.pid); }
+            if cmdline.join(" ").contains(name) {
+                matches.push(pr.pid);
+            }
         }
     }
     match matches.len() {
         0 => anyhow::bail!("no process matching '{}'", name),
         1 => Ok(matches[0]),
-        _ => anyhow::bail!("multiple matches for '{}': {:?}\nSpecify a PID.", name, &matches[..matches.len().min(5)]),
+        _ => anyhow::bail!(
+            "multiple matches for '{}': {:?}\nSpecify a PID.",
+            name,
+            &matches[..matches.len().min(5)]
+        ),
     }
 }
 
@@ -901,7 +1089,12 @@ fn resolve_by_name(name: &str) -> Result<i32> {
     let name_lower = name.to_lowercase();
     let mut matches: Vec<i32> = Vec::new();
     for (pid, process) in sys.processes() {
-        if process.name().to_string_lossy().to_lowercase().contains(&name_lower) {
+        if process
+            .name()
+            .to_string_lossy()
+            .to_lowercase()
+            .contains(&name_lower)
+        {
             matches.push(pid.as_u32() as i32);
             continue;
         }
@@ -917,48 +1110,88 @@ fn resolve_by_name(name: &str) -> Result<i32> {
     match matches.len() {
         0 => anyhow::bail!("no process matching '{}'", name),
         1 => Ok(matches[0]),
-        _ => anyhow::bail!("multiple matches for '{}': {:?}\nSpecify a PID.", name, &matches[..matches.len().min(5)]),
+        _ => anyhow::bail!(
+            "multiple matches for '{}': {:?}\nSpecify a PID.",
+            name,
+            &matches[..matches.len().min(5)]
+        ),
     }
 }
 
 fn colorize_state(s: &str) -> String {
-    if s.starts_with("Running")           { s.green().to_string()       }
-    else if s.starts_with("Zombie") | s.starts_with("Dead") { s.red().bold().to_string() }
-    else if s.starts_with("Uninterruptible") { s.yellow().to_string()   }
-    else                                   { s.to_string()               }
+    if s.starts_with("Running") {
+        s.green().to_string()
+    } else if s.starts_with("Zombie") | s.starts_with("Dead") {
+        s.red().bold().to_string()
+    } else if s.starts_with("Uninterruptible") {
+        s.yellow().to_string()
+    } else {
+        s.to_string()
+    }
 }
 
 fn oom_colored(score: i32) -> String {
-    if score > 700 { score.to_string().red().bold().to_string()   }
-    else if score > 400 { score.to_string().yellow().to_string() }
-    else { score.to_string().green().to_string()                 }
+    if score > 700 {
+        score.to_string().red().bold().to_string()
+    } else if score > 400 {
+        score.to_string().yellow().to_string()
+    } else {
+        score.to_string().green().to_string()
+    }
 }
 
 fn seccomp_label(v: u32) -> &'static str {
-    match v { 0 => "disabled", 1 => "strict", 2 => "filter active", _ => "unknown" }
+    match v {
+        0 => "disabled",
+        1 => "strict",
+        2 => "filter active",
+        _ => "unknown",
+    }
 }
 
 fn progress_bar(fraction: f64, width: usize) -> String {
     let filled = (fraction.clamp(0.0, 1.0) * width as f64).round() as usize;
-    format!("[{}{}]", "█".repeat(filled), "░".repeat(width.saturating_sub(filled)))
+    format!(
+        "[{}{}]",
+        "█".repeat(filled),
+        "░".repeat(width.saturating_sub(filled))
+    )
 }
 
 #[cfg(target_os = "linux")]
 fn memory_percent(rss_kb: u64) -> f64 {
-    let total = std::fs::read_to_string("/proc/meminfo").ok()
-        .and_then(|s| s.lines().find(|l| l.starts_with("MemTotal:"))
-            .and_then(|l| l.split_whitespace().nth(1))
-            .and_then(|s| s.parse::<u64>().ok()))
+    let total = std::fs::read_to_string("/proc/meminfo")
+        .ok()
+        .and_then(|s| {
+            s.lines()
+                .find(|l| l.starts_with("MemTotal:"))
+                .and_then(|l| l.split_whitespace().nth(1))
+                .and_then(|s| s.parse::<u64>().ok())
+        })
         .unwrap_or(1);
-    if total == 0 { return 0.0; }
+    if total == 0 {
+        return 0.0;
+    }
     (rss_kb as f64 / total as f64) * 100.0
 }
 
 #[cfg(not(target_os = "linux"))]
 fn memory_percent(rss_kb: u64) -> f64 {
     let total_kb = sysinfo::System::new_all().total_memory() / 1024;
-    if total_kb == 0 { return 0.0; }
+    if total_kb == 0 {
+        return 0.0;
+    }
     (rss_kb as f64 / total_kb as f64) * 100.0
+}
+
+fn format_bytes_per_sec(b: u64) -> String {
+    if b >= 1_000_000 {
+        format!("{:.1} MB/s", b as f64 / 1_000_000.0)
+    } else if b >= 1000 {
+        format!("{:.1} KB/s", b as f64 / 1000.0)
+    } else {
+        format!("{} B/s", b)
+    }
 }
 
 fn truncate(s: &str, max: usize) -> String {
@@ -976,10 +1209,22 @@ fn truncate(s: &str, max: usize) -> String {
     out
 }
 
+#[cfg(target_os = "linux")]
+fn soft_fd_limit(pid: i32) -> Option<u64> {
+    peek_core::fd_soft_limit(pid)
+}
+
 fn age_string(started: chrono::DateTime<chrono::Local>) -> String {
-    let s = chrono::Local::now().signed_duration_since(started).num_seconds();
-    if s < 60 { format!("{}s ago", s) }
-    else if s < 3600 { format!("{}m ago", s / 60) }
-    else if s < 86400 { format!("{}h ago", s / 3600) }
-    else { format!("{}d ago", s / 86400) }
+    let s = chrono::Local::now()
+        .signed_duration_since(started)
+        .num_seconds();
+    if s < 60 {
+        format!("{}s ago", s)
+    } else if s < 3600 {
+        format!("{}m ago", s / 60)
+    } else if s < 86400 {
+        format!("{}h ago", s / 3600)
+    } else {
+        format!("{}d ago", s / 86400)
+    }
 }

@@ -2,6 +2,8 @@
 name = "peek-cli"
 version = "0.1.0"
 edition = "2021"
+description = "Process intelligence CLI and TUI for Linux"
+license = "MIT"
 
 [[bin]]
 name = "peek"
@@ -15,6 +17,7 @@ owo-colors = { workspace = true }
 serde      = { workspace = true }
 serde_json = { workspace = true }
 peek-core  = { path = "../peek-core" }
+export-engine = { path = "../export-engine" }
 sysinfo    = { workspace = true }
 ratatui    = { workspace = true }
 crossterm  = { workspace = true }
@@ -22,8 +25,26 @@ crossterm  = { workspace = true }
 [target.'cfg(target_os = "linux")'.dependencies]
 procfs = { workspace = true }
 nix   = { workspace = true }
+network-inspector = { path = "../network-inspector" }
 
 [build-dependencies]
 clap          = { workspace = true }
 clap_complete = { workspace = true }
 clap_mangen   = { workspace = true }
+
+# Packaging: cargo-deb (Debian/Ubuntu .deb)
+[package.metadata.deb]
+name = "peek"
+section = "utils"
+priority = "optional"
+depends = "$auto"
+copyright = "MIT License. See LICENSE."
+assets = [
+  ["target/release/peek", "usr/bin/", "755"],
+]
+
+# Packaging: cargo-generate-rpm (Fedora/RHEL .rpm)
+[package.metadata.generate-rpm]
+assets = [
+  { source = "target/release/peek", dest = "/usr/bin/", mode = "0755" },
+]

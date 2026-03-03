@@ -10,7 +10,10 @@ pub fn collect_process_impl(pid: i32, sample_cpu: bool) -> Result<ProcessInfo> {
 
     let mut sys = System::new_all();
     if sample_cpu {
-        sys.refresh_processes_specifics(ProcessesToUpdate::All, ProcessRefreshKind::new().with_cpu());
+        sys.refresh_processes_specifics(
+            ProcessesToUpdate::All,
+            ProcessRefreshKind::new().with_cpu(),
+        );
     } else {
         sys.refresh_processes();
     }
@@ -29,15 +32,10 @@ pub fn collect_process_impl(pid: i32, sample_cpu: bool) -> Result<ProcessInfo> {
     } else {
         cmdline
     };
-    let exe = process
-        .exe()
-        .and_then(|p| p.to_str().map(String::from));
+    let exe = process.exe().and_then(|p| p.to_str().map(String::from));
 
     let state = process.status().to_string();
-    let ppid = process
-        .parent()
-        .map(|p| p.as_u32() as i32)
-        .unwrap_or(0);
+    let ppid = process.parent().map(|p| p.as_u32() as i32).unwrap_or(0);
 
     let uid = process
         .effective_user_id()
@@ -82,6 +80,8 @@ pub fn collect_process_impl(pid: i32, sample_cpu: bool) -> Result<ProcessInfo> {
         threads,
         vm_size_kb,
         rss_kb,
+        pss_kb: None,
+        swap_kb: None,
         cpu_percent,
         io_read_bytes,
         io_write_bytes,

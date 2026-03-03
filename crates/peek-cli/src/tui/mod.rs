@@ -1,5 +1,5 @@
 mod app;
-mod ui;
+pub(crate) mod ui;
 
 use std::io;
 use std::time::{Duration, Instant};
@@ -14,19 +14,19 @@ use ratatui::{backend::CrosstermBackend, Terminal};
 
 pub use app::App;
 
-use super::cli::Cli;
+use super::args::Cli;
 use peek_core::CollectOptions;
 
 /// Entry point for the live-updating TUI dashboard.
 pub fn run_tui(pid: i32, cli: &Cli, interval: Duration) -> Result<()> {
     let opts = CollectOptions {
         resources: true, // always collect for sparklines
-        kernel:  cli.kernel || cli.all,
+        kernel: cli.kernel || cli.all,
         network: cli.network || cli.all,
-        files:   cli.files || cli.all,
-        env:     cli.env || cli.all,
-        tree:    cli.tree || cli.all,
-        gpu:     cli.all,
+        files: cli.files || cli.all,
+        env: cli.env || cli.all,
+        tree: cli.tree || cli.all,
+        gpu: true, // always collect in TUI so GPU tab is useful
     };
 
     let mut app = App::new(pid, opts, interval);
@@ -103,6 +103,7 @@ fn handle_key(app: &mut App, code: KeyCode, modifiers: KeyModifiers) {
         KeyCode::Char('4') => app.active_tab = 3,
         KeyCode::Char('5') => app.active_tab = 4,
         KeyCode::Char('6') => app.active_tab = 5,
+        KeyCode::Char('7') => app.active_tab = 6,
 
         // Pause / resume
         KeyCode::Char(' ') => app.paused = !app.paused,
@@ -110,4 +111,3 @@ fn handle_key(app: &mut App, code: KeyCode, modifiers: KeyModifiers) {
         _ => {}
     }
 }
-

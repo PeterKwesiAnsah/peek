@@ -63,4 +63,3 @@ pub fn build_tree(root_pid: i32) -> anyhow::Result<ProcessNode> {
 
     Ok(attach_children(root_pid, &mut nodes, &children_map, 0))
 }
-

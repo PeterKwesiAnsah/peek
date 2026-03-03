@@ -1,5 +1,15 @@
 [workspace]
-members = ["crates/peek-cli", "crates/peek-core", "crates/peekd"]
+members = [
+    "crates/peek-cli",
+    "crates/peek-core",
+    "crates/peekd",
+    "crates/proc-reader",
+    "crates/kernel-explainer",
+    "crates/resource-sampler",
+    "crates/network-inspector",
+    "crates/signal-engine",
+    "crates/export-engine",
+]
 resolver = "2"
 
 [workspace.package]

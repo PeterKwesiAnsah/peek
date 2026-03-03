@@ -1,128 +1,313 @@
 # peek
 
-The Process Intelligence Tool.
+**The Process Intelligence Tool for Linux**
 
-`peek` is a single, unified CLI + TUI that explains what a process is, what it's doing, how it's consuming system resources, and what it’s connected to — in plain, readable terminal output.
+A single unified CLI that replaces the typical `ps + lsof + ss + /proc` workflow. Inspect any process by PID or name: see what it is, what it’s doing, how it uses resources, and what it’s connected to — in plain English.
 
-This repository contains the full Rust implementation:
+[![CI](https://github.com/ankittk/peek/actions/workflows/ci.yml/badge.svg)](https://github.com/ankittk/peek/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-- a core library that gathers process info (on Linux via `/proc`, on macOS/Windows via `sysinfo`)
-- a CLI (`peek`) with JSON/Markdown/HTML/PDF export and an interactive TUI
-- a background daemon (`peekd`) for history and alerting over a Unix socket (Linux/Unix only)
+---
 
-### Platform support
+## Comparison with other tools
 
-| Feature | Linux (all distros) | macOS | Windows |
-|--------|----------------------|-------|--------|
-| Inspect process (PID, name, memory, CPU, exe) | ✅ Full | ✅ Basic | ✅ Basic |
-| Kernel context (cgroups, OOM, namespaces, seccomp) | ✅ | — | — |
-| Network (listening ports, connections) | ✅ | — | — |
-| Open files, env vars, process tree | ✅ | — | — |
-| GPU (NVIDIA/AMD) | ✅ | — | — |
-| Port search (`--port`) | ✅ | — | — |
-| Kill/signal panel (`--kill`) | ✅ | — | — |
-| History & alerts (`peekd`, `--history`) | ✅ | — | — |
-| TUI (`--watch`), export (JSON/HTML/MD/PDF) | ✅ | ✅ | ✅ |
+| | **peek** | **htop** | **glances** | **top** |
+|---|----------|----------|-------------|--------|
+| **Focus** | Single-process deep dive | System-wide process list | System-wide dashboard | Process list |
+| **Language** | Rust | C | Python | C |
+| **Output** | One process: identity, resources, network, files, env, kernel, tree | Scrolling list, per-process stats | Multi-panel TUI, plugins | List + header |
+| **Plain-English** | Yes — state, OOM, scheduler, capabilities, syscalls, well-known binaries | No — raw values | Partial | No |
+| **Network per process** | Listening TCP/UDP/Unix, connections, traffic rate, optional reverse DNS | No | Per-interface only | No |
+| **Open files / env** | Yes, with secret redaction | No | No | No |
+| **Kill / signals** | Yes, with impact analysis and systemd awareness | Yes (basic) | Limited | Yes (basic) |
+| **Export** | JSON, Markdown, HTML, PDF | No | CSV/JSON/APIs | No |
+| **Daemon / history** | Yes (`peekd`) — ring buffer, alerts, IPC | No | Client/server, Web UI | No |
+| **Single binary** | Yes, static build | No (ncurses) | No (Python + deps) | No |
 
-**Linux** includes Debian, Ubuntu, Fedora, RHEL, Arch, and any other distro. Full functionality (kernel, network, cgroups, port search, kill panel, `peekd`) is available only on Linux. **macOS** and **Windows** get baseline process info (name, PID, memory, CPU, executable path, state) and TUI/export; advanced features are disabled with a clear message.
+**When to use peek:** You have a PID or process name and want one place to understand it (what binary, state, OOM risk, open sockets, env, files) and optionally act on it (signals, export report). For system-wide process lists, use htop or top; for a rich system dashboard, use glances.
 
-### Installation
+---
 
-#### macOS (Homebrew)
+## Summary
 
-```bash
-brew install peek
-```
+- **Single process view** — Identity, resources, network, open files, environment, kernel context, process tree.
+- **Human-readable** — Kernel state, scheduler, OOM score, capabilities, current syscall, and well-known binary descriptions (e.g. nginx, postgres, systemd).
+- **Network** — Listening TCP/UDP/Unix, established connections, traffic rate (RX/TX), optional reverse DNS.
+- **Safe controls** — Signal/kill panel with impact analysis; systemd unit detection and `systemctl` suggestions.
+- **Scriptable** — `--json` and `--json-snapshot` for automation; export to Markdown, HTML, PDF.
+- **Optional daemon** — `peekd` for history, alerting, and persistent monitoring over a Unix socket.
 
-On macOS, `peek` provides basic process inspection (PID, name, memory, CPU, exe). For full features use Linux.
+---
 
-#### Linux (Debian / Ubuntu)
-
-```bash
-# From a .deb (when published) or a PPA
-sudo apt update
-sudo apt install peek peekd
-```
-
-#### Other Linux
-
-- **Arch:** install from AUR (`peek`, `peekd`) or use the `packaging/PKGBUILD`.
-- **Fedora / RHEL:** use the RPM from releases or `packaging/peek.spec` to build.
-- **Generic:** download the static binary for your arch from [GitHub Releases](https://github.com/ankittk/peek/releases) and place `peek` and `peekd` in your `PATH` (e.g. `~/.local/bin` or `/usr/local/bin`).
-
-#### From source (Linux, macOS, Windows)
-
-If your distro or OS isn’t covered or you want to contribute, build and install locally:
+## Quick start
 
 ```bash
-cargo build --release --workspace
-mkdir -p ~/.local/bin
-cp target/release/peek  ~/.local/bin/peek
-# peekd is Linux/Unix only; on Windows the build produces a stub that exits with a message
-cp target/release/peekd ~/.local/bin/peekd   # optional, Linux/Unix
-```
-
-Ensure `~/.local/bin` is on your `PATH`. On Windows you can use `target\release\peek.exe`. For system-wide install and the optional `peekd` systemd unit on Linux, see `packaging/peekd.service` and your distro’s guidelines.
-
-### Usage
-
-#### Basic CLI
-
-```bash
-# Inspect a process by PID or name
+# Inspect by PID or name
 peek 1234
 peek nginx
 
-# If you need root-only details or to signal root-owned processes,
-# prefer the built-in sudo relaunch instead of prefixing with sudo:
-peek 1234 --kill --sudo
+# Full picture (resources, kernel, network, files, env, tree)
+peek nginx --all
 
-# Show all sections (resources, kernel, network, files, env, tree, GPU)
-peek 1234 --all
+# Live-updating TUI
+peek nginx --all --watch
+
+# Kill / signal panel (with impact analysis)
+peek nginx --kill
 
 # JSON for scripting
-peek 1234 --all --json
+peek 1234 --json
+peek 1234 --json-snapshot   # includes captured_at, peek_version, process
 ```
 
-#### Live TUI
+---
+
+## Usage
+
+### Basic inspection
 
 ```bash
-peek 1234 --all --watch          # interactive dashboard
+peek <PID>              # by PID
+peek <name>             # by process name (first match)
+peek 1234 --all         # all sections: resources, kernel, network, files, env, tree, GPU
 ```
 
-The TUI shows CPU/RSS/FD sparklines, gauges, and tabs for kernel context, network, files, env, and process tree.
+### Sections (flags)
 
-#### History and alerts with `peekd`
+| Flag | Description |
+|------|-------------|
+| `-r` / `--resources` | CPU, memory (RSS/PSS/swap), disk I/O, FD count |
+| `-k` / `--kernel` | Scheduler, OOM score, cgroup, namespaces, seccomp, capabilities, current syscall |
+| `-n` / `--network` | Listening TCP/UDP, Unix sockets, connections, traffic rate (1s sample) |
+| `-f` / `--files` | Open file descriptors with type and path |
+| `-e` / `--env` | Environment variables (secrets redacted) |
+| `-t` / `--tree` | Process tree (ancestors and children) |
+| `-a` / `--all` | All of the above |
+
+### Live TUI and export
 
 ```bash
-# Run the daemon (or use the systemd unit)
-peekd &
-
-# Register and query history for a PID
-peek 1234 --history
+peek 1234 --all --watch [INTERVAL_MS]   # TUI with sparklines; default 2000 ms
+peek 1234 --export md                   # Markdown
+peek 1234 --export html                  # Standalone HTML
+peek 1234 --export pdf                   # PDF (needs wkhtmltopdf, weasyprint, or Chromium)
 ```
 
-The CLI talks to `peekd` over `/run/peekd/peekd.sock` to fetch a ring-buffer of recent samples and to manage alert rules (CPU%, memory MB, FD count, thread count).
-
-#### Exporting reports
+### Port search and kill panel
 
 ```bash
-peek 1234 --all --export md      # Markdown
-peek 1234 --all --export html    # HTML
-peek 1234 --all --export pdf     # PDF (requires wkhtmltopdf/weasyprint/Chromium)
+peek --port 443              # find processes using port 443 (TCP/UDP)
+peek nginx --kill             # interactive signal/kill panel with impact analysis
+peek nginx --kill --sudo      # re-exec with sudo for root-owned processes
 ```
 
-### Project layout
+### History and alerts (requires `peekd`)
 
-- `Cargo.toml`               — workspace definition and shared dependencies
-- `crates/peek-core`        — core library (`ProcessInfo`, `/proc` readers, GPU, signal impact, ring buffer)
-- `crates/peek-cli`         — CLI + TUI (`peek`) and `peekd` client
-- `crates/peekd`            — daemon (`peekd`) for history + alerts over a Unix socket
-- `packaging/`              — distro packaging metadata (RPM, Debian, Arch, systemd unit)
-- `completions/`            — generated shell completions (written by `peek-cli`’s `build.rs`)
-- `.github/workflows/`      — CI and release workflows
-- `install.sh`              — simple installer script for future binary releases
+```bash
+peekd &                      # start daemon (or use systemd unit)
+peek 1234 --history          # show resource history for PID
+peek --alert-list            # list alert rules
+# Add/remove rules via CLI or config file (see architecture.md)
+```
 
-### Contributing
+See `man peek` (or `peek --help`) for all options.
 
-See `CONTRIBUTING.md` for development setup, testing, and PR guidelines.
+---
+
+## Installation
+
+**One-line install (Linux, from GitHub Releases):**
+
+```bash
+curl -sSL https://raw.githubusercontent.com/ankittk/peek/main/install.sh | sudo bash
+```
+
+This installs `peek` and `peekd` to `/usr/local/bin` and can optionally install the systemd unit so `sudo systemctl start peekd` works. Set `PEEK_INSTALL_DIR` or `PEEK_VERSION` if needed. See [packaging/](packaging/) for systemd unit, .deb, .rpm, and AUR.
+
+### Prerequisites
+
+- **From source:** Rust toolchain (stable). Install from [rustup.rs](https://rustup.rs).
+- **PDF export (optional):** One of: `wkhtmltopdf`, `weasyprint`, or Chromium/Chrome.
+
+### GNU/Linux
+
+#### Debian / Ubuntu
+
+**From GitHub Releases (.deb):** Each release includes `.deb` packages for amd64 and arm64. Download the `peek_*_amd64.deb` and `peekd_*_amd64.deb` (or `_arm64.deb` on ARM) from the [Releases](https://github.com/ankittk/peek/releases) page, then:
+
+```bash
+sudo dpkg -i peek_*_amd64.deb peekd_*_amd64.deb
+sudo systemctl daemon-reload && sudo systemctl start peekd   # optional
+```
+
+When packages are in a PPA or distro repos: `sudo apt update && sudo apt install peek peekd`.
+
+From source:
+
+```bash
+sudo apt install build-essential pkg-config libssl-dev   # typical build deps
+cargo build --release -p peek-cli -p peekd
+sudo cp target/release/peek target/release/peekd /usr/local/bin/
+```
+
+#### Fedora / RHEL / CentOS
+
+**From GitHub Releases (.rpm):** Releases include `.rpm` packages for x86_64. Download the `peek-cli-*.rpm` and `peekd-*.rpm` from the [Releases](https://github.com/ankittk/peek/releases) page, then:
+
+```bash
+sudo rpm -ivh peek-cli-*.rpm peekd-*.rpm
+# or: sudo dnf install ./peek-cli-*.rpm ./peekd-*.rpm
+sudo systemctl start peekd   # optional
+```
+
+When RPM is in Fedora/EPEL: `sudo dnf install peek peekd`.
+
+From source:
+
+```bash
+sudo dnf install gcc pkg-config openssl-devel
+cargo build --release -p peek-cli -p peekd
+sudo cp target/release/peek target/release/peekd /usr/local/bin/
+```
+
+#### Arch Linux
+
+```bash
+# AUR (when published):
+yay -S peek peekd
+# or
+paru -S peek peekd
+```
+
+From source or [packaging/PKGBUILD](packaging/PKGBUILD):
+
+```bash
+sudo pacman -S base-devel
+cargo build --release -p peek-cli -p peekd
+sudo cp target/release/peek target/release/peekd /usr/local/bin/
+```
+
+#### Other Linux (generic)
+
+Download the static binary for your architecture from [GitHub Releases](https://github.com/ankittk/peek/releases) and put `peek` and `peekd` in your `PATH` (e.g. `~/.local/bin` or `/usr/local/bin`).
+
+```bash
+# Example for x86_64 Linux (musl static)
+curl -sSL https://github.com/ankittk/peek/releases/latest/download/peek-x86_64-unknown-linux-musl.tar.gz | tar xz -C ~/.local/bin
+```
+
+### macOS
+
+```bash
+# Homebrew (when formula is published)
+brew install peek
+```
+
+From source:
+
+```bash
+brew install rust
+git clone https://github.com/ankittk/peek.git && cd peek
+cargo build --release -p peek-cli
+cp target/release/peek /usr/local/bin/
+```
+
+**Note:** On macOS only basic process info (PID, name, memory, CPU, exe, state) and TUI/export are available. Kernel, network, open files, env, tree, and `peekd` require Linux.
+
+### Windows
+
+From source only:
+
+```bash
+# Install Rust from https://rustup.rs, then:
+git clone https://github.com/ankittk/peek.git && cd peek
+cargo build --release -p peek-cli
+# Binary: target\release\peek.exe
+```
+
+**Note:** Windows gets baseline process info and TUI/export. `peekd` is not supported; the daemon binary exits with a message.
+
+### Cargo (all platforms)
+
+```bash
+cargo install peek-cli
+# Optional (Linux/Unix only):
+cargo install --path crates/peekd
+```
+
+This installs `peek` (and optionally `peekd`) into `~/.cargo/bin`. Ensure that directory is on your `PATH`.
+
+---
+
+## Build from source
+
+```bash
+git clone https://github.com/ankittk/peek.git
+cd peek
+cargo build --release --workspace
+```
+
+- **Release binaries:** `target/release/peek`, `target/release/peekd` (Linux/Unix).
+- **Static build (Linux):** `cargo build --release --target x86_64-unknown-linux-musl` (or `aarch64-unknown-linux-musl` for ARM).
+
+### Optional build-time features
+
+- No optional features are required for core behavior. GPU detection uses runtime checks (nvidia-smi, AMD sysfs).
+
+---
+
+## Runtime dependencies
+
+| Dependency | When needed |
+|------------|-------------|
+| **None** | Basic process info, TUI, JSON/MD/HTML export |
+| **wkhtmltopdf** or **weasyprint** or **Chromium** | `--export pdf` |
+| **peekd** (daemon) | `--history`, alert rules |
+
+---
+
+## Platform support
+
+| Feature | Linux | macOS | Windows |
+|--------|-------|-------|--------|
+| Process identity, memory, CPU, exe | ✅ Full | ✅ Basic | ✅ Basic |
+| Kernel (cgroups, OOM, namespaces, seccomp, caps) | ✅ | — | — |
+| Network (TCP/UDP/Unix, traffic rate, reverse DNS) | ✅ | — | — |
+| Open files, env (with redaction), process tree | ✅ | — | — |
+| GPU (NVIDIA/AMD) | ✅ | — | — |
+| Port search, kill/signal panel | ✅ | — | — |
+| peekd (history, alerts) | ✅ | — | — |
+| TUI, export (JSON/MD/HTML/PDF) | ✅ | ✅ | ✅ |
+
+---
+
+## Project layout
+
+| Path | Description |
+|------|-------------|
+| `crates/peek-cli` | CLI and TUI binary (`peek`) |
+| `crates/peek-core` | Core library: `ProcessInfo`, `collect()`, `collect_extended()` |
+| `crates/peekd` | Daemon for history and alerts (Unix socket) |
+| `crates/proc-reader` | `/proc/<PID>/*` and sysfs parsing |
+| `crates/kernel-explainer` | Raw kernel values → plain English |
+| `crates/resource-sampler` | CPU, memory, disk I/O, GPU, ring buffer |
+| `crates/network-inspector` | TCP/UDP/Unix sockets, reverse DNS |
+| `crates/signal-engine` | Signal impact analysis, systemd detection |
+| `crates/export-engine` | JSON, Markdown, HTML, PDF |
+| `packaging/` | systemd unit, RPM/Debian/Arch packaging |
+| `architecture.md` | Architecture and peekd IPC |
+
+---
+
+## Documentation
+
+- **Architecture and peekd IPC:** [architecture.md](architecture.md)
+- **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md)
+- **Security:** [SECURITY.md](SECURITY.md)
+- **Code of conduct:** [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+
+---
+
+## License
+
+MIT License. See [LICENSE](LICENSE).

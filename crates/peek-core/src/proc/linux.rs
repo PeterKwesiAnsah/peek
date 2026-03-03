@@ -2,6 +2,7 @@
 
 use crate::{PeekError, ProcessInfo, Result};
 use chrono::{DateTime, Local};
+use kernel_explainer::states::state_description;
 use procfs::process::Process;
 
 pub fn collect_process_impl(pid: i32, sample_cpu: bool) -> Result<ProcessInfo> {
@@ -14,15 +15,18 @@ pub fn collect_process_impl(pid: i32, sample_cpu: bool) -> Result<ProcessInfo> {
         },
     })?;
 
-    let stat = process
-        .stat()
-        .map_err(|e| PeekError::ProcParse { pid, msg: e.to_string() })?;
-    let status = process
-        .status()
-        .map_err(|e| PeekError::ProcParse { pid, msg: e.to_string() })?;
-    let statm = process
-        .statm()
-        .map_err(|e| PeekError::ProcParse { pid, msg: e.to_string() })?;
+    let stat = process.stat().map_err(|e| PeekError::ProcParse {
+        pid,
+        msg: e.to_string(),
+    })?;
+    let status = process.status().map_err(|e| PeekError::ProcParse {
+        pid,
+        msg: e.to_string(),
+    })?;
+    let statm = process.statm().map_err(|e| PeekError::ProcParse {
+        pid,
+        msg: e.to_string(),
+    })?;
 
     let name = stat.comm.clone();
     let cmdline = process
@@ -37,17 +41,16 @@ pub fn collect_process_impl(pid: i32, sample_cpu: bool) -> Result<ProcessInfo> {
         .ok()
         .and_then(|p| p.into_os_string().into_string().ok());
 
-    let state = format_state(stat.state);
+    let state = state_description(stat.state);
     let ppid = stat.ppid;
     let uid = status.ruid;
     let gid = status.rgid;
 
     let started_at = boot_time().map(|boot| {
-        let ticks = procfs::ticks_per_second() as u64;
+        let ticks = procfs::ticks_per_second();
         let secs = stat.starttime / ticks;
         let nanos = (stat.starttime % ticks) * 1_000_000_000 / ticks;
-        boot + chrono::Duration::seconds(secs as i64)
-            + chrono::Duration::nanoseconds(nanos as i64)
+        boot + chrono::Duration::seconds(secs as i64) + chrono::Duration::nanoseconds(nanos as i64)
     });
 
     let threads = stat.num_threads as i32;
@@ -73,6 +76,8 @@ pub fn collect_process_impl(pid: i32, sample_cpu: bool) -> Result<ProcessInfo> {
         threads,
         vm_size_kb,
         rss_kb,
+        pss_kb: None,
+        swap_kb: None,
         cpu_percent,
         io_read_bytes: None,
         io_write_bytes: None,
@@ -84,21 +89,6 @@ pub fn collect_process_impl(pid: i32, sample_cpu: bool) -> Result<ProcessInfo> {
         process_tree: None,
         gpu: None,
     })
-}
-
-fn format_state(c: char) -> String {
-    match c {
-        'R' => "Running".to_string(),
-        'S' => "Sleeping (interruptible)".to_string(),
-        'D' => "Uninterruptible sleep (disk/NFS wait)".to_string(),
-        'Z' => "Zombie".to_string(),
-        'T' => "Stopped (signal)".to_string(),
-        't' => "Tracing stop".to_string(),
-        'W' => "Paging".to_string(),
-        'X' | 'x' => "Dead".to_string(),
-        'I' => "Idle".to_string(),
-        other => other.to_string(),
-    }
 }
 
 fn boot_time() -> Option<DateTime<Local>> {

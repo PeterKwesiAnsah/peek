@@ -5,7 +5,7 @@ use clap::CommandFactory;
 
 // Re-include the CLI definition so build.rs can call Cli::command().
 // clap must also be listed under [build-dependencies].
-include!("src/cli.rs");
+include!("src/args.rs");
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let out_dir = PathBuf::from(env::var("OUT_DIR")?);
@@ -28,9 +28,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut cmd = Cli::command();
         clap_complete::generate_to(shell, &mut cmd, "peek", &out_dir)?;
     }
-    println!("cargo:warning=shell completions written to {}", out_dir.display());
+    println!(
+        "cargo:warning=shell completions written to {}",
+        out_dir.display()
+    );
 
-    println!("cargo:rerun-if-changed=src/cli.rs");
+    println!("cargo:rerun-if-changed=src/args.rs");
     Ok(())
 }
-

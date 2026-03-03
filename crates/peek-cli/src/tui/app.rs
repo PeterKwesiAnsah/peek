@@ -1,12 +1,12 @@
 use std::time::Duration;
 
+use peek_core::ringbuf::{detect_fd_leak, ResourceSample, RingBuf};
 use peek_core::{CollectOptions, ProcessInfo};
-use peek_core::ringbuf::{detect_fd_leak, RingBuf, ResourceSample};
 
 pub const HISTORY_LEN: usize = 120; // 2 min at 1s default
 
 pub const TABS: &[&str] = &[
-    "Overview", "Kernel", "Network", "Files", "Env", "Tree",
+    "Overview", "Kernel", "Network", "Files", "Env", "Tree", "GPU",
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -66,7 +66,7 @@ impl App {
                 self.cpu_history.push(sample);
 
                 // FD leak detection (check every 10 ticks)
-                if self.tick % 10 == 0 {
+                if self.tick.is_multiple_of(10) {
                     self.fd_leak = match detect_fd_leak(&self.cpu_history, 10) {
                         Some((start, end, n)) => FdLeakStatus::Warning { start, end, n },
                         None => FdLeakStatus::Ok,
@@ -96,7 +96,10 @@ impl App {
 
     /// Sparkline data for CPU (0–1000, representing 0–100.0%)
     pub fn cpu_sparkline(&self) -> Vec<u64> {
-        self.cpu_history.iter().map(|s| s.cpu_pct_x10.min(1000)).collect()
+        self.cpu_history
+            .iter()
+            .map(|s| s.cpu_pct_x10.min(1000))
+            .collect()
     }
 
     /// Sparkline data for RSS in MB (normalised to 0–max_rss_mb)
@@ -109,4 +112,3 @@ impl App {
         self.cpu_history.iter().map(|s| s.fd_count).collect()
     }
 }
-

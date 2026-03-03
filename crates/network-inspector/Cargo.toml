@@ -1,0 +1,9 @@
+[package]
+name = "network-inspector"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+dns-lookup = "1"
+serde = { workspace = true }

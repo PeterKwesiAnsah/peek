@@ -1,3 +1,8 @@
+//! Core library for peek: process snapshot types, collection orchestration, and extended data.
+//!
+//! Provides `ProcessInfo`, `CollectOptions`, `collect()`, and `collect_extended()`; delegates to
+//! proc-reader, kernel-explainer, resource-sampler, network-inspector, and signal-engine.
+
 pub mod proc;
 pub mod ringbuf;
 
@@ -20,6 +25,10 @@ pub struct ProcessInfo {
     pub threads: i32,
     pub vm_size_kb: u64,
     pub rss_kb: u64,
+    /// Proportional set size (KB), from smaps_rollup. Linux, extended only.
+    pub pss_kb: Option<u64>,
+    /// Swap used (KB), from status VmSwap. Linux, extended only.
+    pub swap_kb: Option<u64>,
     // Extended resource fields
     pub cpu_percent: Option<f64>,
     pub io_read_bytes: Option<u64>,
@@ -50,6 +59,8 @@ pub struct KernelInfo {
     pub seccomp: u32,
     pub voluntary_ctxt_switches: Option<u64>,
     pub nonvoluntary_ctxt_switches: Option<u64>,
+    /// Optional LSM security label (e.g. AppArmor/SELinux).
+    pub security_label: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -62,8 +73,20 @@ pub struct NamespaceEntry {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct NetworkInfo {
-    pub listening: Vec<SocketEntry>,
+    pub listening_tcp: Vec<SocketEntry>,
+    pub listening_udp: Vec<SocketEntry>,
     pub connections: Vec<ConnectionEntry>,
+    /// Unix socket paths for this process (from /proc/net/unix + fd inodes).
+    pub unix_sockets: Option<Vec<UnixSocketEntry>>,
+    /// RX bytes/sec in process network namespace (from /proc/<pid>/net/dev delta). Blocks ~1s when collected.
+    pub traffic_rx_bytes_per_sec: Option<u64>,
+    /// TX bytes/sec in process network namespace.
+    pub traffic_tx_bytes_per_sec: Option<u64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct UnixSocketEntry {
+    pub path: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -114,34 +137,10 @@ pub struct ProcessNode {
 
 // ─── GPU ─────────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct GpuInfo {
-    pub index: usize,
-    pub name: String,
-    pub utilization_percent: Option<f64>,
-    pub memory_used_mb: Option<f64>,
-    pub memory_total_mb: Option<f64>,
-    /// "nvml", "sysfs", or "nvidia-smi"
-    pub source: String,
-}
+pub use resource_sampler::gpu::GpuInfo;
 
 // ─── Signal impact pre-flight ─────────────────────────────────────────────────
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct SignalImpact {
-    /// Number of active TCP connections this process has.
-    pub active_tcp_connections: usize,
-    /// Number of direct child processes.
-    pub child_process_count: usize,
-    /// Whether the process holds any exclusive file locks.
-    pub has_file_locks: bool,
-    /// Detected systemd unit name (e.g. "nginx.service"), if any.
-    pub systemd_unit: Option<String>,
-    /// Human-readable recommendation.
-    pub recommendation: String,
-    /// Whether a graceful stop is preferred over a hard kill.
-    pub prefer_graceful: bool,
-}
+pub use signal_engine::impact::SignalImpact;
 
 // ─── FD leak detection ───────────────────────────────────────────────────────
 
@@ -202,16 +201,32 @@ pub fn collect_extended(pid: i32, opts: &CollectOptions) -> Result<ProcessInfo> 
     #[cfg(target_os = "linux")]
     {
         if opts.resources {
-            info.io_read_bytes  = proc::resources::read_io(pid).map(|io| io.0).ok();
+            info.io_read_bytes = proc::resources::read_io(pid).map(|io| io.0).ok();
             info.io_write_bytes = proc::resources::read_io(pid).map(|io| io.1).ok();
-            info.fd_count       = proc::files::count_fds(pid).ok();
+            info.fd_count = proc::files::count_fds(pid).ok();
+            if let Some((_rss, pss, swap)) = resource_sampler::memory::sample_memory(pid) {
+                info.pss_kb = Some(pss);
+                info.swap_kb = Some(swap);
+            }
         }
-        if opts.kernel   { info.kernel       = proc::kernel::collect_kernel(pid).ok(); }
-        if opts.network  { info.network      = proc::network::collect_network(pid).ok(); }
-        if opts.files    { info.open_files   = proc::files::collect_files(pid).ok(); }
-        if opts.env      { info.env_vars     = proc::env::collect_env(pid).ok(); }
-        if opts.tree     { info.process_tree = proc::tree::build_tree(pid).ok(); }
-        if opts.gpu      { info.gpu          = Some(proc::gpu::collect_gpu(pid)); }
+        if opts.kernel {
+            info.kernel = proc::kernel::collect_kernel(pid).ok();
+        }
+        if opts.network {
+            info.network = proc::network::collect_network(pid).ok();
+        }
+        if opts.files {
+            info.open_files = proc::files::collect_files(pid).ok();
+        }
+        if opts.env {
+            info.env_vars = proc::env::collect_env(pid).ok();
+        }
+        if opts.tree {
+            info.process_tree = proc::tree::build_tree(pid).ok();
+        }
+        if opts.gpu {
+            info.gpu = Some(proc::gpu::collect_gpu(pid));
+        }
     }
 
     Ok(info)
@@ -220,8 +235,55 @@ pub fn collect_extended(pid: i32, opts: &CollectOptions) -> Result<ProcessInfo> 
 /// Pre-flight signal impact analysis. Linux only.
 pub fn signal_impact(pid: i32) -> anyhow::Result<SignalImpact> {
     #[cfg(target_os = "linux")]
-    return proc::signal::analyze(pid);
+    {
+        signal_engine::impact::analyze_impact(pid)
+    }
     #[cfg(not(target_os = "linux"))]
-    anyhow::bail!("Signal impact analysis is only available on Linux")
+    {
+        anyhow::bail!("Signal impact analysis is only available on Linux")
+    }
 }
 
+/// Optional human-readable description for well-known process names.
+pub fn binary_description(name: &str) -> Option<String> {
+    kernel_explainer::well_known::binary_description(name).map(|s| s.to_string())
+}
+
+/// Human-readable OOM kill likelihood band (low / moderate / high / critical).
+pub fn oom_description(score: i32) -> &'static str {
+    kernel_explainer::oom::oom_description(score)
+}
+
+/// Soft "Max open files" limit from `/proc/<pid>/limits`, if available.
+#[cfg(target_os = "linux")]
+pub fn fd_soft_limit(pid: i32) -> Option<u64> {
+    use proc_reader::limits::read_limits;
+
+    let limits = read_limits(pid).ok()?;
+    limits.max_open_files_soft
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn fd_soft_limit(_pid: i32) -> Option<u64> {
+    None
+}
+
+/// Current syscall name and description from `/proc/<pid>/syscall` (x86_64).
+/// Returns `None` if unreadable or syscall number unknown.
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+pub fn current_syscall(pid: i32) -> Option<(String, String)> {
+    let (num, _) = proc_reader::current::read_syscall(pid)?;
+    let name = kernel_explainer::syscalls::syscall_name_x86_64(num)?;
+    let desc = kernel_explainer::syscalls::syscall_description(name);
+    Some((name.to_string(), desc.to_string()))
+}
+
+#[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+pub fn current_syscall(_pid: i32) -> Option<(String, String)> {
+    None
+}
+
+/// Best-effort reverse DNS for an address (e.g. "192.168.1.1:443"). Time-bounded; for CLI/TUI only.
+pub fn resolve_remote(addr: &str) -> Option<String> {
+    network_inspector::resolver::resolve(addr)
+}

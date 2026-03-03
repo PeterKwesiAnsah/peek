@@ -11,6 +11,11 @@ serde = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 sysinfo = { workspace = true }
+proc-reader = { path = "../proc-reader" }
+signal-engine = { path = "../signal-engine" }
+resource-sampler = { path = "../resource-sampler" }
+network-inspector = { path = "../network-inspector" }
+kernel-explainer = { path = "../kernel-explainer" }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 procfs = { workspace = true }
