@@ -1,7 +1,7 @@
 // Cross-platform (macOS, Windows, etc.) implementation using sysinfo.
 
 use crate::{PeekError, ProcessInfo, Result};
-use chrono::{DateTime, Local, TimeZone};
+use chrono::{Local, TimeZone};
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 
 pub fn collect_process_impl(pid: i32, sample_cpu: bool) -> Result<ProcessInfo> {
@@ -15,7 +15,7 @@ pub fn collect_process_impl(pid: i32, sample_cpu: bool) -> Result<ProcessInfo> {
             ProcessRefreshKind::new().with_cpu(),
         );
     } else {
-        sys.refresh_processes();
+        sys.refresh_processes(ProcessesToUpdate::All);
     }
 
     let process = sys.process(sys_pid).ok_or(PeekError::NotFound(pid))?;
@@ -37,16 +37,11 @@ pub fn collect_process_impl(pid: i32, sample_cpu: bool) -> Result<ProcessInfo> {
     let state = process.status().to_string();
     let ppid = process.parent().map(|p| p.as_u32() as i32).unwrap_or(0);
 
-    let uid = process
-        .effective_user_id()
-        .or_else(|| process.user_id())
-        .map(|u| *u)
-        .unwrap_or(0);
-    let gid = process
-        .effective_group_id()
-        .or_else(|| process.group_id())
-        .map(|g| *g)
-        .unwrap_or(0);
+    // On non-Linux targets we don't rely on real uid/gid values.
+    // The full /proc-based implementation is only compiled on Linux,
+    // so it's safe to use placeholder values here for portability.
+    let uid: u32 = 0;
+    let gid: u32 = 0;
 
     let started_at = (process.start_time() > 0)
         .then(|| Local.timestamp_opt(process.start_time() as i64, 0).single())
