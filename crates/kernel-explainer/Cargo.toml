@@ -9,6 +9,7 @@ homepage = "https://github.com/ankittk/peek"
 documentation = "https://github.com/ankittk/peek"
 keywords = ["process", "linux", "kernel", "monitoring"]
 categories = ["command-line-utilities", "os::linux-apis"]
+readme = "README.md"
 
 [dependencies]
 serde = { workspace = true }

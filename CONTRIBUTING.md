@@ -37,12 +37,18 @@ CI runs these on every push to `main` and on pull requests.
 
 ## Project layout
 
-- `crates/peek-cli` — CLI and TUI binary (`peek`)
+- `crates/peek-cli` — CLI and TUI binary `peek` (crate: `peek-process`)
 - `crates/peek-core` — Core library: `ProcessInfo`, `collect()`, `collect_extended()`
 - `crates/peekd` — Daemon for history and alerts
 - `crates/proc-reader`, `kernel-explainer`, `resource-sampler`, `network-inspector`, `signal-engine`, `export-engine` — Helper libraries
 
 See [docs/architecture.md](docs/architecture.md) for details.
+
+## Publishing releases (maintainers)
+
+Releases are created by pushing a version tag (e.g. `v1.0.0`). The [Release workflow](.github/workflows/release.yml) builds binaries and packages, creates a GitHub Release, and publishes crates to [crates.io](https://crates.io) in dependency order.
+
+To enable crates.io publish, add a repository secret: **Settings → Secrets and variables → Actions → New repository secret** — name `CARGO_REGISTRY_TOKEN`, value = your [crates.io API token](https://crates.io/settings/tokens). The CLI is published as the **peek-process** crate (binary name remains `peek`).
 
 ## Submitting changes
 

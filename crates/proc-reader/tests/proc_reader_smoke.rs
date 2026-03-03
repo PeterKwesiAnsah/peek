@@ -1,4 +1,4 @@
-use proc_reader::{cgroup, current, environ, fd, limits, security};
+use peek_proc_reader::{cgroup, current, environ, fd, limits, security};
 
 #[test]
 fn limits_parse_limit_field_unlimited_and_numeric() {

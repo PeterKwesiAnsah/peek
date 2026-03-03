@@ -35,9 +35,9 @@ Unix socket for CLI queries, and fires configurable CPU/memory alerts.
 
 %build
 cargo build --release --workspace
-cargo build --release -p peek-cli
+cargo build --release -p peek-process
 # Generate man page and completions
-OUT_DIR=$(cargo build --release -p peek-cli 2>&1 | grep "^cargo:warning=man page" | sed 's/.*written to //' | xargs dirname 2>/dev/null || true)
+OUT_DIR=$(cargo build --release -p peek-process 2>&1 | grep "^cargo:warning=man page" | sed 's/.*written to //' | xargs dirname 2>/dev/null || true)
 
 %install
 install -Dm755 target/release/peek     %{buildroot}%{_bindir}/peek

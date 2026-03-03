@@ -9,6 +9,7 @@ homepage = "https://github.com/ankittk/peek"
 documentation = "https://github.com/ankittk/peek"
 keywords = ["process", "linux", "monitoring", "export"]
 categories = ["command-line-utilities", "os::linux-apis"]
+readme = "README.md"
 
 [dependencies]
 anyhow = { workspace = true }

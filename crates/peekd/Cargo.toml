@@ -4,6 +4,12 @@ version = "1.0.0"
 edition = "2021"
 description = "Background daemon for peek resource history and alerting"
 license = "MIT"
+repository = "https://github.com/ankittk/peek"
+homepage = "https://github.com/ankittk/peek"
+documentation = "https://github.com/ankittk/peek"
+keywords = ["process", "daemon", "monitoring", "peek"]
+categories = ["command-line-utilities", "os::linux-apis"]
+readme = "README.md"
 
 [dependencies]
 anyhow          = { workspace = true }

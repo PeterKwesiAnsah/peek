@@ -1,5 +1,5 @@
 [package]
-name = "proc-reader"
+name = "peek-proc-reader"
 version = "0.1.0"
 edition = "2021"
 description = "Linux /proc filesystem reader used by the Peek process intelligence tool"
@@ -9,6 +9,7 @@ homepage = "https://github.com/ankittk/peek"
 documentation = "https://github.com/ankittk/peek"
 keywords = ["process", "linux", "procfs", "monitoring"]
 categories = ["command-line-utilities", "os::linux-apis"]
+readme = "README.md"
 
 [dependencies]
 serde = { workspace = true }

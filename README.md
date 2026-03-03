@@ -1,18 +1,41 @@
 # peek
 
-![peek TUI demo](docs/peek-tui.gif)
-
 **The Process Intelligence Tool for Linux**
 
-A single unified CLI that replaces the typical `ps + lsof + ss + /proc` workflow. Inspect any process by PID or name: see what it is, what it’s doing, how it uses resources, and what it’s connected to — in plain English.
+A single unified CLI that replaces the typical `ps + lsof + ss + /proc` workflow. Inspect any process by PID or name: see what it is, what it’s doing, how it uses resources, and what it’s connected to.
 
 [![CI](https://github.com/ankittk/peek/actions/workflows/ci.yml/badge.svg)](https://github.com/ankittk/peek/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Crates.io](https://img.shields.io/crates/v/peek-cli)](https://crates.io/crates/peek-cli)
-[![Downloads](https://img.shields.io/crates/d/peek-cli)](https://crates.io/crates/peek-cli)
-[![MSRV](https://img.shields.io/crates/r/peek-cli)](https://crates.io/crates/peek-cli)
-[![Platforms](https://img.shields.io/badge/platforms-Linux%20(full)%20%7C%20macOS%20%26%20Windows%20(preview)-lightgray)](https://github.com/ankittk/peek#platform-support)
-[![Discussions](https://img.shields.io/badge/discuss-GitHub%20Discussions-royalblue)](https://github.com/ankittk/peek/discussions)
+[![Rust](https://img.shields.io/badge/rust-1.79%2B-orange.svg)](https://www.rust-lang.org/)
+[![Crates.io](https://img.shields.io/crates/v/peek-process.svg)](https://crates.io/crates/peek-process)
+[![crates.io downloads](https://img.shields.io/crates/d/peek-process.svg?label=crates.io)](https://crates.io/crates/peek-process)
+[![MSRV](https://img.shields.io/badge/MSRV-1.79-blue.svg)](https://github.com/ankittk/peek)
+[![Release](https://img.shields.io/github/v/release/ankittk/peek?sort=semver)](https://github.com/ankittk/peek/releases)
+[![Downloads](https://img.shields.io/github/downloads/ankittk/peek/total)](https://github.com/ankittk/peek/releases)
+[![Platforms](https://img.shields.io/badge/platforms-Linux%20(full)%20%7C%20macOS%20%26%20Windows%20(preview)-lightgray.svg)](https://github.com/ankittk/peek#platform-support)
+[![Discussions](https://img.shields.io/badge/discuss-GitHub%20Discussions-royalblue.svg)](https://github.com/ankittk/peek/discussions)
+
+---
+
+**Overview**
+
+![peek overview](docs/static/peek-overview.png)
+
+**Identity & resources**
+
+![Process identity and resources](docs/static/peek-id.png)
+
+**Live TUI (`--watch`)**
+
+![Live-updating TUI](docs/static/peek-watch.png)
+
+**Export (MD / HTML / PDF)**
+
+![Export report](docs/static/peek-export.png)
+
+**Signal / kill panel**
+
+![Signal kill panel with impact analysis](docs/static/peek-kill.png)
 
 ---
 
@@ -27,7 +50,6 @@ A single unified CLI that replaces the typical `ps + lsof + ss + /proc` workflow
 | **Focus** | Single-process deep dive | System-wide process list | System-wide dashboard | Process list | System-wide process list |
 | **Language** | Rust | C | Python | C | Rust |
 | **Output** | One process: identity, resources, network, files, env, kernel, tree | Scrolling list, per-process stats | Multi-panel TUI, plugins | List + header | Rich process list with tree view |
-| **Plain-English** | Yes — state, OOM, scheduler, capabilities, syscalls, well-known binaries | No — raw values | Partial | No | No — raw values |
 | **Network per process** | Listening TCP/UDP/Unix, connections, traffic rate, optional reverse DNS | No | Per-interface only | No | No |
 | **Open files / env** | Yes, with secret redaction | No | No | No | No |
 | **Kill / signals** | Yes, with impact analysis and systemd awareness | Yes (basic) | Limited | Yes (basic) | Yes (basic) |
@@ -39,7 +61,7 @@ A single unified CLI that replaces the typical `ps + lsof + ss + /proc` workflow
 
 ---
 
-**Why peek?** It’s a single, focused tool for deeply understanding one process at a time — with plain‑English explanations of kernel state, OOM risk, capabilities, network, files, and environment. Instead of juggling `ps`, `lsof`, `ss`, `/proc`, and ad‑hoc scripts, you get one consistent CLI and TUI, plus exportable reports for debugging and sharing.
+**Why peek?** It’s a single, focused tool for deeply understanding one process at a time — with explanations of kernel state, OOM risk, capabilities, network, files, and environment. Instead of juggling `ps`, `lsof`, `ss`, `/proc`, and ad‑hoc scripts, you get one consistent CLI and TUI, plus exportable reports for debugging and sharing.
 
 ## Summary
 
@@ -195,17 +217,17 @@ From source:
 
 ```bash
 sudo apt install build-essential pkg-config libssl-dev   # typical build deps
-cargo build --release -p peek-cli -p peekd
+cargo build --release -p peek-process -p peekd
 sudo cp target/release/peek target/release/peekd /usr/local/bin/
 ```
 
 #### Fedora / RHEL / CentOS
 
-**From GitHub Releases (.rpm):** Releases include `.rpm` packages for x86_64. Download the `peek-cli-*.rpm` and `peekd-*.rpm` from the [Releases](https://github.com/ankittk/peek/releases) page, then:
+**From GitHub Releases (.rpm):** Releases include `.rpm` packages for x86_64. Download the `peek-process-*.rpm` and `peekd-*.rpm` from the [Releases](https://github.com/ankittk/peek/releases) page, then:
 
 ```bash
-sudo rpm -ivh peek-cli-*.rpm peekd-*.rpm
-# or: sudo dnf install ./peek-cli-*.rpm ./peekd-*.rpm
+sudo rpm -ivh peek-process-*.rpm peekd-*.rpm
+# or: sudo dnf install ./peek-process-*.rpm ./peekd-*.rpm
 sudo systemctl start peekd   # optional
 ```
 
@@ -215,7 +237,7 @@ From source:
 
 ```bash
 sudo dnf install gcc pkg-config openssl-devel
-cargo build --release -p peek-cli -p peekd
+cargo build --release -p peek-process -p peekd
 sudo cp target/release/peek target/release/peekd /usr/local/bin/
 ```
 
@@ -232,7 +254,7 @@ From source or [packaging/PKGBUILD](packaging/PKGBUILD):
 
 ```bash
 sudo pacman -S base-devel
-cargo build --release -p peek-cli -p peekd
+cargo build --release -p peek-process -p peekd
 sudo cp target/release/peek target/release/peekd /usr/local/bin/
 ```
 
@@ -261,7 +283,7 @@ From source:
 ```bash
 brew install rust
 git clone https://github.com/ankittk/peek.git && cd peek
-cargo build --release -p peek-cli
+cargo build --release -p peek-process
 cp target/release/peek /usr/local/bin/
 ```
 
@@ -274,7 +296,7 @@ From source only:
 ```bash
 # Install Rust from https://rustup.rs, then:
 git clone https://github.com/ankittk/peek.git && cd peek
-cargo build --release -p peek-cli
+cargo build --release -p peek-process
 # Binary: target\release\peek.exe
 ```
 
@@ -283,9 +305,9 @@ cargo build --release -p peek-cli
 ### Cargo (all platforms)
 
 ```bash
-cargo install peek-cli
+cargo install peek-process
 # Optional (Linux/Unix only):
-cargo install --path crates/peekd
+cargo install peekd
 ```
 
 This installs `peek` (and optionally `peekd`) into `~/.cargo/bin`. Ensure that directory is on your `PATH`.
@@ -340,11 +362,11 @@ cargo build --release --workspace
 
 | Path | Description |
 |------|-------------|
-| `crates/peek-cli` | CLI and TUI binary (`peek`) |
+| `crates/peek-cli` | CLI and TUI binary `peek` (crate name: `peek-process`) |
 | `crates/peek-core` | Core library: `ProcessInfo`, `collect()`, `collect_extended()` |
 | `crates/peekd` | Daemon for history and alerts (Unix socket) |
 | `crates/proc-reader` | `/proc/<PID>/*` and sysfs parsing |
-| `crates/kernel-explainer` | Raw kernel values → plain English |
+| `crates/kernel-explainer` | Raw kernel values |
 | `crates/resource-sampler` | CPU, memory, disk I/O, GPU, ring buffer |
 | `crates/network-inspector` | TCP/UDP/Unix sockets, reverse DNS |
 | `crates/signal-engine` | Signal impact analysis, systemd detection |

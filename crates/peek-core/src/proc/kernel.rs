@@ -1,7 +1,7 @@
 use crate::{KernelInfo, NamespaceEntry};
 use kernel_explainer::capabilities::format_caps;
-use proc_reader::cgroup::read_cgroup;
-use proc_reader::security::read_label;
+use peek_proc_reader::cgroup::read_cgroup;
+use peek_proc_reader::security::read_label;
 
 pub fn collect_kernel(pid: i32) -> anyhow::Result<KernelInfo> {
     let stat_raw = std::fs::read_to_string(format!("/proc/{}/stat", pid))?;

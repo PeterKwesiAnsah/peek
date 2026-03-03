@@ -1,9 +1,15 @@
 [package]
-name = "peek-cli"
+name = "peek-process"
 version = "1.0.0"
 edition = "2021"
 description = "Process intelligence CLI and TUI for Linux"
 license = "MIT"
+repository = "https://github.com/ankittk/peek"
+homepage = "https://github.com/ankittk/peek"
+documentation = "https://github.com/ankittk/peek"
+keywords = ["process", "linux", "cli", "monitoring", "procfs"]
+categories = ["command-line-utilities", "os::linux-apis"]
+readme = "README.md"
 
 [[bin]]
 name = "peek"

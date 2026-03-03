@@ -36,7 +36,7 @@ jobs:
           for target in x86_64-unknown-linux-musl aarch64-unknown-linux-musl; do
             STRIP_FLAG=""
             [ "$target" = "aarch64-unknown-linux-musl" ] && STRIP_FLAG="--no-strip"
-            cargo deb --no-build --target "$target" --deb-version "$VERSION_SHORT" $STRIP_FLAG -p peek-cli && cp target/debian/*.deb release/
+            cargo deb --no-build --target "$target" --deb-version "$VERSION_SHORT" $STRIP_FLAG -p peek-process && cp target/debian/*.deb release/
             cargo deb --no-build --target "$target" --deb-version "$VERSION_SHORT" $STRIP_FLAG -p peekd && cp target/debian/*.deb release/
           done
       - name: Build .rpm packages (x86_64)
@@ -65,3 +65,73 @@ jobs:
           files: release/*
           generate_release_notes: true
 
+  # Publishes workspace crates to crates.io in dependency order.
+  # Requires repo secret: CARGO_REGISTRY_TOKEN (crates.io API token).
+  # Waits after each publish so the crates.io index can update before dependents are published.
+  publish-crates-io:
+    runs-on: ubuntu-latest
+    needs: release
+    env:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Publish to crates.io
+        run: |
+          set -euo pipefail
+
+          MAX_ATTEMPTS=8
+          POLL_INTERVAL=20
+          INDEX_SETTLE=45
+
+          publish_one() {
+            local crate="$1"
+            local settle="${2:-$INDEX_SETTLE}"  # pass 0 for the last crate
+            local attempt
+
+            for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
+              out=$(cargo publish -p "$crate" 2>&1) && published=true || published=false
+
+              if echo "$out" | grep -q "already exists"; then
+                echo "[$crate] Already published — skipping."
+                return 0
+              fi
+
+              if $published || echo "$out" | grep -q "Uploading\|Published"; then
+                if [ "$settle" -gt 0 ]; then
+                  echo "[$crate] Published. Waiting ${settle}s for index to settle..."
+                  sleep "$settle"
+                else
+                  echo "[$crate] Published."
+                fi
+                return 0
+              fi
+
+              echo "[$crate] Attempt $attempt/$MAX_ATTEMPTS failed — retrying in ${POLL_INTERVAL}s:"
+              echo "$out" | tail -10
+              sleep "$POLL_INTERVAL"
+            done
+
+            echo "[$crate] All $MAX_ATTEMPTS attempts exhausted. Aborting."
+            return 1
+          }
+
+          # Leaf crates have no internal dependencies — publish in parallel
+          publish_one proc-reader      &
+          publish_one kernel-explainer &
+          publish_one network-inspector &
+          publish_one resource-sampler  &
+          publish_one signal-engine     &
+          wait
+
+          # Wait for index to settle before publishing dependents
+          sleep "$INDEX_SETTLE"
+
+          publish_one peek-core
+
+          # Final group — no settle needed after the last one
+          publish_one export-engine
+          publish_one peekd
+          publish_one peek-process 0
+
+          echo "All crates published successfully."

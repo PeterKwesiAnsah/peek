@@ -1,5 +1,5 @@
 use crate::{EnvVar, Result};
-use proc_reader::environ::{read_environ, EnvironEntry};
+use peek_proc_reader::environ::{read_environ, EnvironEntry};
 
 // Key-based patterns for secret-ish variables. These are deliberately broad and
 // err on the side of redacting more rather than less.

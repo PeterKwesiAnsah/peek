@@ -1,7 +1,7 @@
 //! Core library for peek: process snapshot types, collection orchestration, and extended data.
 //!
 //! Provides `ProcessInfo`, `CollectOptions`, `collect()`, and `collect_extended()`; delegates to
-//! proc-reader, kernel-explainer, resource-sampler, network-inspector, and signal-engine.
+//! peek-proc-reader, kernel-explainer, resource-sampler, network-inspector, and signal-engine.
 
 pub mod config;
 pub mod proc;
@@ -174,13 +174,13 @@ pub enum PeekError {
     ProcParse { pid: i32, msg: String },
 }
 
-impl From<proc_reader::ProcReaderError> for PeekError {
-    fn from(e: proc_reader::ProcReaderError) -> Self {
+impl From<peek_proc_reader::ProcReaderError> for PeekError {
+    fn from(e: peek_proc_reader::ProcReaderError) -> Self {
         let pid = e.pid().unwrap_or(-1);
         match e {
-            proc_reader::ProcReaderError::NotFound(pid) => PeekError::NotFound(pid),
-            proc_reader::ProcReaderError::Io { source, .. } => PeekError::ProcIo { pid, source },
-            proc_reader::ProcReaderError::Parse { msg, .. } => PeekError::ProcParse { pid, msg },
+            peek_proc_reader::ProcReaderError::NotFound(pid) => PeekError::NotFound(pid),
+            peek_proc_reader::ProcReaderError::Io { source, .. } => PeekError::ProcIo { pid, source },
+            peek_proc_reader::ProcReaderError::Parse { msg, .. } => PeekError::ProcParse { pid, msg },
         }
     }
 }
@@ -270,7 +270,7 @@ pub fn oom_description(score: i32) -> &'static str {
 /// Soft "Max open files" limit from `/proc/<pid>/limits`, if available.
 #[cfg(target_os = "linux")]
 pub fn fd_soft_limit(pid: i32) -> Option<u64> {
-    use proc_reader::limits::read_limits;
+    use peek_proc_reader::limits::read_limits;
 
     let limits = read_limits(pid).ok()?;
     limits.max_open_files_soft
@@ -285,7 +285,7 @@ pub fn fd_soft_limit(_pid: i32) -> Option<u64> {
 /// Returns `None` if unreadable or syscall number unknown.
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub fn current_syscall(pid: i32) -> Option<(String, String)> {
-    let (num, _) = proc_reader::current::read_syscall(pid)?;
+    let (num, _) = peek_proc_reader::current::read_syscall(pid)?;
     let name = kernel_explainer::syscalls::syscall_name_x86_64(num)?;
     let desc = kernel_explainer::syscalls::syscall_description(name);
     Some((name.to_string(), desc.to_string()))

@@ -1,5 +1,5 @@
 use crate::{OpenFile, Result};
-use proc_reader::fd::{count_fds as reader_count_fds, read_fd, FdEntry};
+use peek_proc_reader::fd::{count_fds as reader_count_fds, read_fd, FdEntry};
 
 pub fn collect_files(pid: i32) -> Result<Vec<OpenFile>> {
     let entries: Vec<FdEntry> = read_fd(pid)?;

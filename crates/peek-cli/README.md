@@ -1,4 +1,4 @@
-# peek-cli
+# peek-process
 
 The **peek** binary: CLI and TUI for process inspection on Linux (and limited support on macOS/Windows).
 
