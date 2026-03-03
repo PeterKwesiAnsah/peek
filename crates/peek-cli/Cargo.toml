@@ -1,6 +1,6 @@
 [package]
 name = "peek-cli"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 description = "Process intelligence CLI and TUI for Linux"
 license = "MIT"
@@ -37,7 +37,8 @@ clap_mangen   = { workspace = true }
 name = "peek"
 section = "utils"
 priority = "optional"
-depends = "$auto"
+maintainer = "Peek Contributors <peek@example.com>"
+depends = []
 copyright = "MIT License. See LICENSE."
 assets = [
   ["target/release/peek", "usr/bin/", "755"],

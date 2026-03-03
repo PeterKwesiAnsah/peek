@@ -31,26 +31,33 @@ jobs:
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
           VERSION="${TAG#v}"
+          VERSION_SHORT="${VERSION%.*}"
           mkdir -p release
           for target in x86_64-unknown-linux-musl aarch64-unknown-linux-musl; do
-            cargo deb --no-build --target "$target" --deb-version "$VERSION" -p peek-cli && cp target/debian/*.deb release/
-            cargo deb --no-build --target "$target" --deb-version "$VERSION" -p peekd && cp target/debian/*.deb release/
+            STRIP_FLAG=""
+            [ "$target" = "aarch64-unknown-linux-musl" ] && STRIP_FLAG="--no-strip"
+            cargo deb --no-build --target "$target" --deb-version "$VERSION_SHORT" $STRIP_FLAG -p peek-cli && cp target/debian/*.deb release/
+            cargo deb --no-build --target "$target" --deb-version "$VERSION_SHORT" $STRIP_FLAG -p peekd && cp target/debian/*.deb release/
           done
       - name: Build .rpm packages (x86_64)
         run: |
-          cp target/x86_64-unknown-linux-musl/release/peek target/release/peek
-          cp target/x86_64-unknown-linux-musl/release/peekd target/release/peekd
-          cargo generate-rpm -p peek-cli
-          cargo generate-rpm -p peekd
-          cp target/generate-rpm/*.rpm release/
+          mkdir -p crates/peek-cli/target/release crates/peekd/target/release
+          cp target/x86_64-unknown-linux-musl/release/peek crates/peek-cli/target/release/peek
+          cp target/x86_64-unknown-linux-musl/release/peekd crates/peekd/target/release/peekd
+          (cd crates/peek-cli && cargo generate-rpm)
+          (cd crates/peekd && cargo generate-rpm)
+          cp crates/peek-cli/target/generate-rpm/*.rpm release/
+          cp crates/peekd/target/generate-rpm/*.rpm release/
       - name: Prepare release assets
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG#v}"
+          VERSION_LABEL="v${VERSION%.*}"
           mkdir -p release
-          cp target/x86_64-unknown-linux-musl/release/peek  release/peek-${TAG}-x86_64-unknown-linux-musl
-          cp target/x86_64-unknown-linux-musl/release/peekd release/peekd-${TAG}-x86_64-unknown-linux-musl
-          cp target/aarch64-unknown-linux-musl/release/peek  release/peek-${TAG}-aarch64-unknown-linux-musl
-          cp target/aarch64-unknown-linux-musl/release/peekd release/peekd-${TAG}-aarch64-unknown-linux-musl
+          cp target/x86_64-unknown-linux-musl/release/peek  release/peek-${VERSION_LABEL}-x86_64-linux-musl
+          cp target/x86_64-unknown-linux-musl/release/peekd release/peekd-${VERSION_LABEL}-x86_64-linux-musl
+          cp target/aarch64-unknown-linux-musl/release/peek  release/peek-${VERSION_LABEL}-aarch64-linux-musl
+          cp target/aarch64-unknown-linux-musl/release/peekd release/peekd-${VERSION_LABEL}-aarch64-linux-musl
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:

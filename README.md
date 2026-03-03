@@ -133,9 +133,10 @@ This installs `peek` and `peekd` to `/usr/local/bin` and can optionally install 
 
 #### Debian / Ubuntu
 
-**From GitHub Releases (.deb):** Each release includes `.deb` packages for amd64 and arm64. Download the `peek_*_amd64.deb` and `peekd_*_amd64.deb` (or `_arm64.deb` on ARM) from the [Releases](https://github.com/ankittk/peek/releases) page, then:
+**From GitHub Releases (.deb):** Each release includes `.deb` packages (version 1.0, 1.1, etc.) for amd64 and arm64. Download `peek_1.0_amd64.deb` and `peekd_1.0_amd64.deb` (or `_arm64.deb` on ARM) from the [Releases](https://github.com/ankittk/peek/releases) page, then:
 
 ```bash
+# Install peek first (peekd depends on it), then peekd
 sudo dpkg -i peek_*_amd64.deb peekd_*_amd64.deb
 sudo systemctl daemon-reload && sudo systemctl start peekd   # optional
 ```
@@ -192,8 +193,12 @@ sudo cp target/release/peek target/release/peekd /usr/local/bin/
 Download the static binary for your architecture from [GitHub Releases](https://github.com/ankittk/peek/releases) and put `peek` and `peekd` in your `PATH` (e.g. `~/.local/bin` or `/usr/local/bin`).
 
 ```bash
-# Example for x86_64 Linux (musl static)
-curl -sSL https://github.com/ankittk/peek/releases/latest/download/peek-x86_64-unknown-linux-musl.tar.gz | tar xz -C ~/.local/bin
+# Example for x86_64 Linux (musl static): set TAG e.g. TAG=v1.0.0 (release tag). Asset names use v1.0 for 1.0.x.
+TAG=v1.0.0
+VERSION_LABEL=v1.0
+curl -sSL -o peek "https://github.com/ankittk/peek/releases/download/${TAG}/peek-${VERSION_LABEL}-x86_64-linux-musl"
+curl -sSL -o peekd "https://github.com/ankittk/peek/releases/download/${TAG}/peekd-${VERSION_LABEL}-x86_64-linux-musl"
+chmod +x peek peekd
 ```
 
 ### macOS
@@ -248,7 +253,7 @@ cargo build --release --workspace
 ```
 
 - **Release binaries:** `target/release/peek`, `target/release/peekd` (Linux/Unix).
-- **Static build (Linux):** `cargo build --release --target x86_64-unknown-linux-musl` (or `aarch64-unknown-linux-musl` for ARM).
+- **Static build (Linux):** `cargo build --release --target x86_64-unknown-linux-musl` (or `aarch64-unknown-linux-musl` for ARM). Release assets are named `peek-v1.0-x86_64-linux-musl`, `peekd-v1.0-aarch64-linux-musl`, etc. (version label is major.minor, e.g. v1.0 for 1.0.x).
 
 ### Optional build-time features
 

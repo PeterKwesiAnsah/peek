@@ -15,9 +15,9 @@ This directory holds packaging metadata for Linux distributions. CI builds **.de
 
 - **Script (any Linux):**  
   `curl -sSL https://raw.githubusercontent.com/ankittk/peek/main/install.sh | sudo bash`
-- **.deb (Debian/Ubuntu):** Download `peek_*_amd64.deb` and `peekd_*_amd64.deb` from [Releases](https://github.com/ankittk/peek/releases), then `sudo dpkg -i peek*.deb`.
+- **.deb (Debian/Ubuntu):** Download `peek_1.0_amd64.deb` and `peekd_1.0_amd64.deb` (or 1.1, etc.) from [Releases](https://github.com/ankittk/peek/releases), then `sudo dpkg -i peek*.deb`.
 - **.rpm (Fedora/RHEL):** Download the `.rpm` files from Releases, then `sudo rpm -ivh peek*.rpm` (or `dnf install ./peek*.rpm`).
-- **Static binary:** Download `peek-<tag>-x86_64-unknown-linux-musl` and `peekd-<tag>-x86_64-unknown-linux-musl`, put them in `PATH` as `peek` and `peekd`.
+- **Static binary:** Download `peek-v1.0-x86_64-linux-musl` and `peekd-v1.0-x86_64-linux-musl` (or `aarch64-linux-musl` on ARM) from the release for tag v1.0.0, put them in `PATH` as `peek` and `peekd`.
 
 ## PPA / AUR / Copr (maintainer-driven)
 

@@ -1,6 +1,6 @@
 [package]
 name = "peekd"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 description = "Background daemon for peek resource history and alerting"
 license = "MIT"
@@ -21,6 +21,7 @@ toml            = "0.8"
 name = "peekd"
 section = "utils"
 priority = "optional"
+maintainer = "Peek Contributors <peek@example.com>"
 depends = ["peek"]
 copyright = "MIT License. See LICENSE."
 assets = [

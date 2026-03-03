@@ -5,6 +5,7 @@ set -euo pipefail
 
 VERSION="${PEEK_VERSION:-1.0.0}"
 TAG="v${VERSION}"
+VERSION_LABEL="v${VERSION%.*}"
 INSTALL_DIR="${PEEK_INSTALL_DIR:-/usr/local/bin}"
 REPO="${PEEK_REPO:-ankittk/peek}"
 
@@ -18,18 +19,18 @@ esac
 
 ARCH=$(uname -m)
 case "$ARCH" in
-  x86_64)     TRIPLE="x86_64-unknown-linux-musl" ;;
-  aarch64|arm64) TRIPLE="aarch64-unknown-linux-musl" ;;
+  x86_64)     ASSET_SUFFIX="x86_64-linux-musl" ;;
+  aarch64|arm64) ASSET_SUFFIX="aarch64-linux-musl" ;;
   *)
     echo "Unsupported architecture: $ARCH (supported: x86_64, aarch64)" >&2
     exit 1
     ;;
 esac
 
-PEEK_URL="https://github.com/${REPO}/releases/download/${TAG}/peek-${TAG}-${TRIPLE}"
-PEEKD_URL="https://github.com/${REPO}/releases/download/${TAG}/peekd-${TAG}-${TRIPLE}"
+PEEK_URL="https://github.com/${REPO}/releases/download/${TAG}/peek-${VERSION_LABEL}-${ASSET_SUFFIX}"
+PEEKD_URL="https://github.com/${REPO}/releases/download/${TAG}/peekd-${VERSION_LABEL}-${ASSET_SUFFIX}"
 
-echo "Installing peek ${VERSION} (${TRIPLE}) to ${INSTALL_DIR}..."
+echo "Installing peek ${VERSION} (${ASSET_SUFFIX}) to ${INSTALL_DIR}..."
 mkdir -p "$INSTALL_DIR"
 
 curl -sSLo "${INSTALL_DIR}/peek" "$PEEK_URL"
