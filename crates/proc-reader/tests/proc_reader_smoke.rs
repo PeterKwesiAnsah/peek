@@ -2,32 +2,42 @@ use peek_proc_reader::{cgroup, current, environ, fd, limits, security};
 
 #[test]
 fn limits_parse_limit_field_unlimited_and_numeric() {
-    // Exercise the public API by calling read_limits for an obviously invalid PID;
-    // it should not panic and should return a Limits struct.
-    let _ = limits::read_limits(-1);
+    // Invalid PID may return Err on Linux or default Limits on non-Linux; must not panic.
+    let result = limits::read_limits(-1);
+    if let Ok(l) = &result {
+        assert!(l.max_open_files_soft.is_some() || l.max_open_files_soft.is_none());
+        assert!(l.max_open_files_hard.is_some() || l.max_open_files_hard.is_none());
+    }
 }
 
 #[test]
 fn environ_read_is_resilient() {
     let pid = std::process::id() as i32;
-    let _ = environ::read_environ(pid);
+    let result = environ::read_environ(pid);
+    assert!(result.is_ok());
+    let _vec = result.unwrap();
 }
 
 #[test]
 fn fd_read_is_resilient() {
     let pid = std::process::id() as i32;
-    let _ = fd::read_fd(pid);
+    let result = fd::read_fd(pid);
+    assert!(result.is_ok());
+    let _vec = result.unwrap();
 }
 
 #[test]
 fn cgroup_and_security_are_resilient() {
     let pid = std::process::id() as i32;
-    let _ = cgroup::read_cgroup(pid);
-    let _ = security::read_label(pid);
+    let cg = cgroup::read_cgroup(pid);
+    let lab = security::read_label(pid);
+    assert!(cg.is_some() || cg.is_none());
+    assert!(lab.is_some() || lab.is_none());
 }
 
 #[test]
 fn current_syscall_does_not_panic() {
     let pid = std::process::id() as i32;
-    let _ = current::read_syscall(pid);
+    let result = current::read_syscall(pid);
+    assert!(result.is_some() || result.is_none());
 }

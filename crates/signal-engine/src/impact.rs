@@ -4,9 +4,9 @@
 // frontends (CLI, daemon, future UI) without depending on peek-core.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 
 use crate::systemd::detect_systemd_unit;
+use network_inspector::tcp;
 
 /// Structured description of the impact of sending a signal to a process.
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -51,25 +51,8 @@ pub fn analyze_impact(pid: i32) -> anyhow::Result<SignalImpact> {
 
 // ─── TCP connection counting ─────────────────────────────────────────────────
 
-fn process_socket_inodes(pid: i32) -> HashSet<u64> {
-    let mut inodes = HashSet::new();
-    if let Ok(entries) = std::fs::read_dir(format!("/proc/{}/fd", pid)) {
-        for entry in entries.flatten() {
-            if let Ok(target) = std::fs::read_link(entry.path()) {
-                let s = target.to_string_lossy();
-                if let Some(n) = s.strip_prefix("socket:[").and_then(|s| s.strip_suffix(']')) {
-                    if let Ok(inode) = n.parse::<u64>() {
-                        inodes.insert(inode);
-                    }
-                }
-            }
-        }
-    }
-    inodes
-}
-
 fn count_tcp_connections(pid: i32) -> usize {
-    let inodes = process_socket_inodes(pid);
+    let inodes = tcp::process_socket_inodes(pid);
     if inodes.is_empty() {
         return 0;
     }

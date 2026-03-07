@@ -1,6 +1,6 @@
 [package]
 name = "kernel-explainer"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 description = "Kernel event and scheduling explanation library for the Peek process intelligence tool"
 license = "MIT"

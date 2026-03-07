@@ -31,7 +31,7 @@ PEEK_FILE="peek-${VERSION_LABEL}-${ASSET_SUFFIX}"
 PEEKD_FILE="peekd-${VERSION_LABEL}-${ASSET_SUFFIX}"
 PEEK_URL="https://github.com/${REPO}/releases/download/${TAG}/${PEEK_FILE}"
 PEEKD_URL="https://github.com/${REPO}/releases/download/${TAG}/${PEEKD_FILE}"
-CHECKSUMS_URL="https://github.com/${REPO}/releases/download/${TAG}/checksums.sha256"
+CHECKSUMS_URL="https://github.com/${REPO}/releases/download/${TAG}/sha256sums.txt"
 
 echo "Installing peek ${VERSION} (${ASSET_SUFFIX}) to ${INSTALL_DIR}..."
 
@@ -44,7 +44,7 @@ TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 echo "Downloading checksums..."
-curl -sSL -o "${TMP_DIR}/checksums.sha256" "$CHECKSUMS_URL"
+curl -sSL -o "${TMP_DIR}/sha256sums.txt" "$CHECKSUMS_URL"
 
 echo "Downloading binaries..."
 curl -sSL -o "${TMP_DIR}/${PEEK_FILE}" "$PEEK_URL"
@@ -53,7 +53,7 @@ curl -sSL -o "${TMP_DIR}/${PEEKD_FILE}" "$PEEKD_URL"
 echo "Verifying checksums..."
 (
   cd "$TMP_DIR"
-  sha256sum -c --ignore-missing checksums.sha256
+  sha256sum -c --ignore-missing sha256sums.txt
 )
 
 mkdir -p "$INSTALL_DIR"

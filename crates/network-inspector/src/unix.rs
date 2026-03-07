@@ -1,38 +1,17 @@
 // Unix domain sockets from /proc/net/unix, correlated with process fd inodes.
 
-use std::collections::HashSet;
+use crate::tcp;
 
 #[derive(Debug, Clone)]
 pub struct UnixSocketEntry {
     pub path: String,
 }
 
-/// Collect socket inodes for this process from /proc/<pid>/fd.
-fn socket_inodes(pid: i32) -> HashSet<u64> {
-    let mut inodes = HashSet::new();
-    let fd_dir = format!("/proc/{}/fd", pid);
-    if let Ok(entries) = std::fs::read_dir(&fd_dir) {
-        for entry in entries.flatten() {
-            if let Ok(target) = std::fs::read_link(entry.path()) {
-                let s = target.to_string_lossy();
-                if let Some(inode_str) =
-                    s.strip_prefix("socket:[").and_then(|s| s.strip_suffix(']'))
-                {
-                    if let Ok(inode) = inode_str.parse::<u64>() {
-                        inodes.insert(inode);
-                    }
-                }
-            }
-        }
-    }
-    inodes
-}
-
 /// Parse /proc/net/unix and return path names for sockets belonging to `pid`.
 /// Path may be empty for anonymous sockets.
 #[cfg(target_os = "linux")]
 pub fn list_unix_sockets(pid: i32) -> Vec<UnixSocketEntry> {
-    let inodes = socket_inodes(pid);
+    let inodes = tcp::process_socket_inodes(pid);
     let raw = match std::fs::read_to_string("/proc/net/unix") {
         Ok(r) => r,
         Err(_) => return vec![],

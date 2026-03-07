@@ -202,7 +202,10 @@ mod tests {
     fn collect_gpu_returns_vec() {
         // Should not panic regardless of whether a GPU is present.
         let result = collect_gpu(1);
-        // Either empty or populated — both are valid.
-        let _ = result.len();
+        // Each entry should have non-empty name and source
+        for g in &result {
+            assert!(!g.name.is_empty());
+            assert!(!g.source.is_empty());
+        }
     }
 }

@@ -30,6 +30,10 @@ Maintainers are responsible for clarifying and enforcing our standards of accept
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the maintainers. All complaints will be reviewed and investigated and will result in a response that is deemed necessary and appropriate to the circumstances.
 
+## Reporting
+
+To report a violation, contact the maintainers by opening a [GitHub Discussion](https://github.com/ankittk/peek/discussions) (for general conduct) or by [filing a private security advisory](https://github.com/ankittk/peek/security/advisories/new) for harassment or security-sensitive reports.
+
 ## Attribution
 
 This Code of Conduct is adapted from the [Contributor Covenant](https://www.contributor-covenant.org), version 2.1.

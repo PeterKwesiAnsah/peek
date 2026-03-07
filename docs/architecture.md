@@ -1,7 +1,5 @@
 # peek architecture
 
-Layout matches `plan.md` §2 (Repository Structure).
-
 ## Crates and responsibilities
 
 - **peek-cli**

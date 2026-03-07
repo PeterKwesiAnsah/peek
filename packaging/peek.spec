@@ -7,7 +7,7 @@ License:        MIT
 URL:            https://github.com/ankittk/peek
 Source0:        %{name}-%{version}.tar.gz
 
-BuildRequires:  rust >= 1.70
+BuildRequires:  rust >= 1.79
 BuildRequires:  cargo
 BuildRequires:  openssl-devel
 

@@ -27,7 +27,7 @@ fn read_net_dev_from_path(path: &str) -> Option<(u64, u64)> {
             .split_whitespace()
             .filter_map(|s| s.parse().ok())
             .collect();
-        if nums.len() >= 8 {
+        if nums.len() >= 9 {
             rx_total += nums[0];
             tx_total += nums[8];
         }
@@ -59,7 +59,10 @@ pub fn sample_network_rate(pid: i32) -> Option<(u64, u64)> {
     let (r1, t1) = read_net_dev_for_pid(pid)?;
     std::thread::sleep(window);
     let (r2, t2) = read_net_dev_for_pid(pid)?;
-    Some((r2.saturating_sub(r1), t2.saturating_sub(t1)))
+    let elapsed_secs = window_ms as f64 / 1000.0;
+    let rx = (r2.saturating_sub(r1) as f64 / elapsed_secs) as u64;
+    let tx = (t2.saturating_sub(t1) as f64 / elapsed_secs) as u64;
+    Some((rx, tx))
 }
 
 #[cfg(not(target_os = "linux"))]

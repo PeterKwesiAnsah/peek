@@ -425,13 +425,14 @@ dependencies = [
 
 [[package]]
 name = "export-engine"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "chrono",
  "peek-core",
  "serde",
  "serde_json",
+ "which",
 ]
 
 [[package]]
@@ -538,6 +539,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
+name = "home"
+version = "0.5.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc627f471c528ff0c4a49e1d5e60450c8f6461dd6d10ba9dcd3a61d3dff7728d"
+dependencies = [
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "iana-time-zone"
 version = "0.1.65"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -640,7 +650,7 @@ dependencies = [
 
 [[package]]
 name = "kernel-explainer"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "serde",
 ]
@@ -738,7 +748,7 @@ dependencies = [
 
 [[package]]
 name = "network-inspector"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "dns-lookup",
@@ -839,7 +849,7 @@ checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
 name = "peek-core"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -859,7 +869,7 @@ dependencies = [
 
 [[package]]
 name = "peek-proc-reader"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "procfs",
  "proptest",
@@ -1163,7 +1173,7 @@ checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 
 [[package]]
 name = "resource-sampler"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "serde",
@@ -1306,9 +1316,10 @@ checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 
 [[package]]
 name = "signal-engine"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
+ "network-inspector",
  "nix",
  "serde",
 ]
@@ -1779,6 +1790,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "which"
+version = "6.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b4ee928febd44d98f2f459a4a79bd4d928591333a494a10a868418ac1b39cf1f"
+dependencies = [
+ "either",
+ "home",
+ "rustix 0.38.44",
+ "winsafe",
+]
+
+[[package]]
 name = "winapi"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2076,6 +2099,12 @@ checksum = "5a5364e9d77fcdeeaa6062ced926ee3381faa2ee02d3eb83a5c27a8825540829"
 dependencies = [
  "memchr",
 ]
+
+[[package]]
+name = "winsafe"
+version = "0.0.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d135d17ab770252ad95e9a872d365cf3090e3be864a34ab46f48555993efc904"
 
 [[package]]
 name = "wit-bindgen"

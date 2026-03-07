@@ -1555,18 +1555,10 @@ fn format_bytes_per_sec(b: u64) -> String {
 }
 
 fn truncate(s: &str, max: usize) -> String {
-    if s.len() <= max {
+    if s.chars().count() <= max {
         return s.to_string();
     }
-    let mut out = String::new();
-    for (i, ch) in s.chars().enumerate() {
-        if i + 1 >= max {
-            break;
-        }
-        out.push(ch);
-    }
-    out.push('…');
-    out
+    s.chars().take(max.saturating_sub(1)).collect::<String>() + "…"
 }
 
 #[cfg(target_os = "linux")]

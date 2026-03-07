@@ -1,6 +1,6 @@
 [package]
 name = "export-engine"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 description = "Export and serialization engine for metrics and events produced by the Peek tool"
 license = "MIT"
@@ -16,4 +16,5 @@ anyhow = { workspace = true }
 chrono = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-peek-core = { path = "../peek-core", version = "0.1" }
+peek-core = { path = "../peek-core", version = "1.0" }
+which = { workspace = true }

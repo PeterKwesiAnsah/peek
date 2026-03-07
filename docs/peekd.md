@@ -38,7 +38,7 @@ Supported actions:
 - `{"action":"history","pid":123}` → return recent samples for PID.
 - `{"action":"alert_add", ...}` → add an alert rule (see below).
 - `{"action":"alert_list"}` → list alert rules.
-- `{"action":"alert_remove","rule_id":"..."}"` → remove a rule by ID.
+- `{"action":"alert_remove","rule_id":"..."}` → remove a rule by ID.
 - `{"action":"ping"}` → health check (`{"pong":true,"version":"..","watching":N}`).
 
 ## Alert rules (static config)

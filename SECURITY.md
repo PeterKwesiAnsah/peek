@@ -6,7 +6,7 @@ If you believe you have found a security vulnerability in peek or peekd, please 
 
 **Do not** open a public GitHub issue for security-sensitive findings.
 
-**Preferred:** Email the maintainers (see [GitHub repo](https://github.com/ankittk/peek) for contact) with a description of the issue, steps to reproduce, and any suggested fix if you have one. We will acknowledge and work with you to understand and address the report.
+**Preferred:** Report via [GitHub Security Advisories](https://github.com/ankittk/peek/security/advisories/new) or email the maintainer (see the [repository](https://github.com/ankittk/peek) profile) with a description of the issue, steps to reproduce, and any suggested fix if you have one. We will acknowledge and work with you to understand and address the report.
 
 **What to include:**
 

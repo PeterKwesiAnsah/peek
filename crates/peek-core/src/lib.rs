@@ -179,8 +179,12 @@ impl From<peek_proc_reader::ProcReaderError> for PeekError {
         let pid = e.pid().unwrap_or(-1);
         match e {
             peek_proc_reader::ProcReaderError::NotFound(pid) => PeekError::NotFound(pid),
-            peek_proc_reader::ProcReaderError::Io { source, .. } => PeekError::ProcIo { pid, source },
-            peek_proc_reader::ProcReaderError::Parse { msg, .. } => PeekError::ProcParse { pid, msg },
+            peek_proc_reader::ProcReaderError::Io { source, .. } => {
+                PeekError::ProcIo { pid, source }
+            }
+            peek_proc_reader::ProcReaderError::Parse { msg, .. } => {
+                PeekError::ProcParse { pid, msg }
+            }
         }
     }
 }

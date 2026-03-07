@@ -116,22 +116,25 @@ jobs:
             return 1
           }
 
-          # Leaf crates have no internal dependencies — publish in parallel
-          publish_one proc-reader      &
-          publish_one kernel-explainer &
+          # Tier 1 — true leaf crates (no internal deps) — publish in parallel
+          publish_one peek-proc-reader  &
+          publish_one kernel-explainer  &
           publish_one network-inspector &
           publish_one resource-sampler  &
-          publish_one signal-engine     &
           wait
 
-          # Wait for index to settle before publishing dependents
-          sleep "$INDEX_SETTLE"
+          # Tier 2 — signal-engine depends on network-inspector
+          publish_one signal-engine
 
+          # Tier 3 — peek-core depends on all tier-1 + tier-2 crates
           publish_one peek-core
 
-          # Final group — no settle needed after the last one
-          publish_one export-engine
-          publish_one peekd
+          # Tier 4 — export-engine and peekd both depend only on peek-core
+          publish_one export-engine &
+          publish_one peekd         &
+          wait
+
+          # Tier 5 — peek-process depends on export-engine, peek-core, etc.
           publish_one peek-process 0
 
           echo "All crates published successfully."

@@ -197,7 +197,7 @@ This installs `peek` and `peekd` to `/usr/local/bin` and can optionally install 
 
 - **From source:** Rust toolchain (stable). Install from [rustup.rs](https://rustup.rs).
 - **PDF export (optional):** One of: `wkhtmltopdf`, `weasyprint`, or Chromium/Chrome.
-- **MSRV:** Rust 1.74+ (driven by `ratatui` and other dependencies).
+- **MSRV:** Rust 1.79+ (driven by `ratatui` and other dependencies).
 
 ### GNU/Linux
 

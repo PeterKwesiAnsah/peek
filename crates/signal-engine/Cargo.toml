@@ -1,8 +1,8 @@
 [package]
 name = "signal-engine"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
-description = "Signal processing and aggregation engine for the Peek process intelligence tool"
+description = "Signal impact analysis and systemd detection for the peek process intelligence tool"
 license = "MIT"
 repository = "https://github.com/ankittk/peek"
 homepage = "https://github.com/ankittk/peek"
@@ -13,6 +13,7 @@ readme = "README.md"
 
 [dependencies]
 anyhow = { workspace = true }
+network-inspector = { path = "../network-inspector", version = "1.0" }
 serde = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]

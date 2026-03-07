@@ -171,9 +171,13 @@ fn deliver(method: &NotifyMethod, event: &AlertEvent) {
             );
         }
         NotifyMethod::Stderr => {
-            eprintln!(
-                "[peekd alert] rule:{} pid:{} {}={:.2} (threshold {:.2})",
-                event.rule_id, event.pid, event.metric, event.value, event.threshold
+            tracing::warn!(
+                rule_id = %event.rule_id,
+                pid = event.pid,
+                metric = %event.metric,
+                value = event.value,
+                threshold = event.threshold,
+                "[peekd alert] rule fired"
             );
         }
         NotifyMethod::Script { command } => {

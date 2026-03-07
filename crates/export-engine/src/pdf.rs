@@ -14,10 +14,10 @@ pub fn export_pdf(snapshot: &ProcessSnapshot) -> Result<String> {
     let html = render_html(snapshot);
     let info = &snapshot.process;
 
-    // Find a PDF renderer
+    // Find a PDF renderer (portable: use which crate instead of shell "which")
     let renderer = ["wkhtmltopdf", "weasyprint", "chromium", "google-chrome"]
         .iter()
-        .find(|cmd| which_cmd(cmd))
+        .find(|cmd| which::which(cmd).is_ok())
         .copied();
 
     let Some(renderer) = renderer else {
@@ -28,24 +28,32 @@ pub fn export_pdf(snapshot: &ProcessSnapshot) -> Result<String> {
     };
 
     let filename = format!("peek-{}-{}.pdf", info.name, info.pid);
+    let out_path = std::env::current_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+        .join(&filename);
+    let out_path_str = out_path
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("output path is not valid UTF-8"))?
+        .to_string();
 
     // Write HTML to a temp file
     let tmp = std::env::temp_dir().join(format!("peek-{}.html", info.pid));
     std::fs::write(&tmp, &html)?;
+    let tmp_str = tmp.to_string_lossy();
 
     let status = match renderer {
         "wkhtmltopdf" => std::process::Command::new("wkhtmltopdf")
-            .args([tmp.to_str().unwrap(), &filename])
+            .args([tmp_str.as_ref(), out_path_str.as_str()])
             .status()?,
         "weasyprint" => std::process::Command::new("weasyprint")
-            .args([tmp.to_str().unwrap(), &filename])
+            .args([tmp_str.as_ref(), out_path_str.as_str()])
             .status()?,
         _ => std::process::Command::new(renderer)
             .args([
                 "--headless",
                 "--disable-gpu",
                 "--print-to-pdf",
-                &filename,
+                &out_path_str,
                 &format!("file://{}", tmp.display()),
             ])
             .status()?,
@@ -57,13 +65,5 @@ pub fn export_pdf(snapshot: &ProcessSnapshot) -> Result<String> {
         anyhow::bail!("{} exited with status {:?}", renderer, status.code());
     }
 
-    Ok(filename)
-}
-
-fn which_cmd(cmd: &str) -> bool {
-    std::process::Command::new("which")
-        .arg(cmd)
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+    Ok(out_path_str)
 }
