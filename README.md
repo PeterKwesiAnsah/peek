@@ -1,45 +1,86 @@
-# peek
+<div align="center">
 
-**The Process Intelligence Tool for Linux**
+# **peek**
 
-A single unified CLI that replaces the typical `ps + lsof + ss + /proc` workflow. Inspect any process by PID or name: see what it is, what it’s doing, how it uses resources, and what it’s connected to.
+### *The Process Intelligence Tool for Linux*
 
-[![CI](https://github.com/ankittk/peek/actions/workflows/ci.yml/badge.svg)](https://github.com/ankittk/peek/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-1.79%2B-orange.svg)](https://www.rust-lang.org/)
-[![Crates.io](https://img.shields.io/crates/v/peek-process.svg)](https://crates.io/crates/peek-process)
-[![crates.io downloads](https://img.shields.io/crates/d/peek-process.svg?label=crates.io)](https://crates.io/crates/peek-process)
-[![MSRV](https://img.shields.io/badge/MSRV-1.79-blue.svg)](https://github.com/ankittk/peek)
-[![Release](https://img.shields.io/github/v/release/ankittk/peek?sort=semver)](https://github.com/ankittk/peek/releases)
-[![Downloads](https://img.shields.io/github/downloads/ankittk/peek/total)](https://github.com/ankittk/peek/releases)
-[![Platforms](https://img.shields.io/badge/platforms-Linux%20(full)%20%7C%20macOS%20%26%20Windows%20(preview)-lightgray.svg)](https://github.com/ankittk/peek#platform-support)
-[![Discussions](https://img.shields.io/badge/discuss-GitHub%20Discussions-royalblue.svg)](https://github.com/ankittk/peek/discussions)
+One CLI to replace `ps` + `lsof` + `ss` + `/proc`.  
+Inspect any process by PID or name: **what it is**, **what it’s doing**, **how it uses resources**, and **what it’s connected to**.
 
 ---
 
-**Overview**
+<p>
+  <a href="https://github.com/ankittk/peek/actions/workflows/ci.yml">
+    <img src="https://github.com/ankittk/peek/actions/workflows/ci.yml/badge.svg" alt="CI" />
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT" />
+  </a>
+  <a href="https://www.rust-lang.org/">
+    <img src="https://img.shields.io/badge/rust-1.79%2B-orange.svg" alt="Rust" />
+  </a>
+  <a href="https://crates.io/crates/peek-process">
+    <img src="https://img.shields.io/crates/v/peek-process.svg" alt="Crates.io" />
+  </a>
+  <a href="https://crates.io/crates/peek-process">
+    <img src="https://img.shields.io/crates/d/peek-process.svg?label=crates.io" alt="crates.io downloads" />
+  </a>
+  <a href="https://github.com/ankittk/peek">
+    <img src="https://img.shields.io/badge/MSRV-1.79-blue.svg" alt="MSRV" />
+  </a>
+  <a href="https://github.com/ankittk/peek/releases">
+    <img src="https://img.shields.io/github/v/release/ankittk/peek?sort=semver" alt="Release" />
+  </a>
+  <a href="https://github.com/ankittk/peek/releases">
+    <img src="https://img.shields.io/github/downloads/ankittk/peek/total" alt="Downloads" />
+  </a>
+  <a href="https://github.com/ankittk/peek#platform-support">
+    <img src="https://img.shields.io/badge/platforms-Linux%20(full)%20%7C%20macOS%20%26%20Windows%20(preview)-lightgray.svg" alt="Platforms" />
+  </a>
+  <a href="https://github.com/ankittk/peek/discussions">
+    <img src="https://img.shields.io/badge/discuss-GitHub%20Discussions-royalblue.svg" alt="Discussions" />
+  </a>
+</p>
 
-![peek overview](docs/static/peek-overview.png)
+**[Install](#installation)** · **[Quick start](#quick-start)** · **[Documentation](#documentation)**
 
-**Identity & resources**
-
-![Process identity and resources](docs/static/peek-id.png)
-
-**Live TUI (`--watch`)**
-
-![Live-updating TUI](docs/static/peek-watch.png)
-
-**Export (MD / HTML / PDF)**
-
-![Export report](docs/static/peek-export.png)
-
-**Signal / kill panel**
-
-![Signal kill panel with impact analysis](docs/static/peek-kill.png)
+</div>
 
 ---
 
-**Questions or ideas?** Use [GitHub Discussions](https://github.com/ankittk/peek/discussions) so the issue tracker stays focused on bugs and features.
+## Table of contents
+
+- [Screenshots](#screenshots)
+- [Why peek?](#why-peek)
+- [Comparison](#comparison-with-other-tools)
+- [Summary](#summary)
+- [Quick start](#quick-start)
+- [Usage](#usage)
+- [Installation](#installation)
+- [Build from source](#build-from-source)
+- [Platform support](#platform-support)
+- [Documentation](#documentation)
+
+---
+
+## Screenshots
+
+| Overview | Identity & resources | Live TUI (`--watch`) |
+|----------|----------------------|------------------------|
+| ![peek overview](docs/static/peek-overview.png) | ![Process identity and resources](docs/static/peek-id.png) | ![Live-updating TUI](docs/static/peek-watch.png) |
+
+| Export (MD / HTML / PDF) | Signal / kill panel |
+|--------------------------|----------------------|
+| ![Export report](docs/static/peek-export.png) | ![Signal kill panel with impact analysis](docs/static/peek-kill.png) |
+
+> **Questions or ideas?** Use [GitHub Discussions](https://github.com/ankittk/peek/discussions) so the issue tracker stays focused on bugs and features.
+
+---
+
+## Why peek?
+
+> A **single, focused tool** for deeply understanding one process at a time — with explanations of kernel state, OOM risk, capabilities, network, files, and environment.  
+> Instead of juggling `ps`, `lsof`, `ss`, `/proc`, and ad‑hoc scripts, you get one consistent CLI and TUI, plus exportable reports for debugging and sharing.
 
 ---
 
@@ -61,16 +102,16 @@ A single unified CLI that replaces the typical `ps + lsof + ss + /proc` workflow
 
 ---
 
-**Why peek?** It’s a single, focused tool for deeply understanding one process at a time — with explanations of kernel state, OOM risk, capabilities, network, files, and environment. Instead of juggling `ps`, `lsof`, `ss`, `/proc`, and ad‑hoc scripts, you get one consistent CLI and TUI, plus exportable reports for debugging and sharing.
-
 ## Summary
 
-- **Single process view** — Identity, resources, network, open files, environment, kernel context, process tree.
-- **Human-readable** — Kernel state, scheduler, OOM score, capabilities, current syscall, and well-known binary descriptions (e.g. nginx, postgres, systemd).
-- **Network** — Listening TCP/UDP/Unix, established connections, traffic rate (RX/TX), optional reverse DNS.
-- **Safe controls** — Signal/kill panel with impact analysis; systemd unit detection and `systemctl` suggestions.
-- **Scriptable** — `--json` and `--json-snapshot` for automation; export to Markdown, HTML, PDF.
-- **Optional daemon** — `peekd` for history, alerting, and persistent monitoring over a Unix socket.
+| Area | What you get |
+|------|----------------|
+| **Single process view** | Identity, resources, network, open files, environment, kernel context, process tree. |
+| **Human-readable** | Kernel state, scheduler, OOM score, capabilities, current syscall, and well-known binary descriptions (e.g. nginx, postgres, systemd). |
+| **Network** | Listening TCP/UDP/Unix, established connections, traffic rate (RX/TX), optional reverse DNS. |
+| **Safe controls** | Signal/kill panel with impact analysis; systemd unit detection and `systemctl` suggestions. |
+| **Scriptable** | `--json` and `--json-snapshot` for automation; export to Markdown, HTML, PDF. |
+| **Optional daemon** | `peekd` for history, alerting, and persistent monitoring over a Unix socket. |
 
 ---
 
@@ -95,7 +136,7 @@ peek 1234 --json
 peek 1234 --json-snapshot   # includes captured_at, peek_version, process
 ```
 
-### Example: peek nginx (trimmed)
+### Example: `peek nginx` (trimmed)
 
 ```text
 🔍 PROCESS: nginx (PID 1234)
@@ -158,25 +199,25 @@ peek 1234 --all         # all sections: resources, kernel, network, files, env, 
 ```bash
 peek 1234 --all --watch [INTERVAL_MS]   # TUI with sparklines; default 2000 ms
 peek 1234 --export md                   # Markdown
-peek 1234 --export html                  # Standalone HTML
-peek 1234 --export pdf                   # PDF (needs wkhtmltopdf, weasyprint, or Chromium)
+peek 1234 --export html                 # Standalone HTML
+peek 1234 --export pdf                  # PDF (needs wkhtmltopdf, weasyprint, or Chromium)
 ```
 
 ### Port search and kill panel
 
 ```bash
-peek --port 443              # find processes using port 443 (TCP/UDP)
-peek nginx --kill             # interactive signal/kill panel with impact analysis
-peek nginx --kill --sudo      # re-exec with sudo for root-owned processes
+peek --port 443           # find processes using port 443 (TCP/UDP)
+peek nginx --kill         # interactive signal/kill panel with impact analysis
+peek nginx --kill --sudo  # re-exec with sudo for root-owned processes
 ```
 
 ### History and alerts (requires `peekd`)
 
 ```bash
-peekd &                      # start daemon (or use systemd unit)
-peek 1234 --history          # show resource history for PID
-peek --alert-list            # list alert rules
-# Add/remove rules via CLI or config file (see [docs/architecture.md](docs/architecture.md))
+peekd &                   # start daemon (or use systemd unit)
+peek 1234 --history       # show resource history for PID
+peek --alert-list         # list alert rules
+# Add/remove rules via CLI or config file (see docs/architecture.md)
 ```
 
 See `man peek` (or `peek --help`) for all options.
@@ -287,7 +328,7 @@ cargo build --release -p peek-process
 cp target/release/peek /usr/local/bin/
 ```
 
-**Note:** macOS is **preview only**. You get basic process info (PID, name, memory, CPU, exe, state) and TUI/export. Kernel, network, open files, env, tree, and `peekd` require Linux.
+> **Note:** macOS is **preview only**. You get basic process info (PID, name, memory, CPU, exe, state) and TUI/export. Kernel, network, open files, env, tree, and `peekd` require Linux.
 
 ### Windows
 
@@ -300,7 +341,7 @@ cargo build --release -p peek-process
 # Binary: target\release\peek.exe
 ```
 
-**Note:** Windows is **preview only**. You get baseline process info and TUI/export. `peekd` is not supported; the daemon binary exits with a message.
+> **Note:** Windows is **preview only**. You get baseline process info and TUI/export. `peekd` is not supported; the daemon binary exits with a message.
 
 ### Cargo (all platforms)
 
@@ -343,7 +384,7 @@ cargo build --release --workspace
 
 ## Platform support
 
-**Linux is the primary target** with full features. **macOS and Windows are preview (best-effort)** and only support a subset: PID, name, CPU, memory, exe, state, and the TUI/export shell. Kernel, network, open files, env, tree, and peekd are Linux-only. The table below is the source of truth.
+**Linux** is the primary target with full features. **macOS** and **Windows** are preview (best-effort) and only support a subset: PID, name, CPU, memory, exe, state, and the TUI/export shell. Kernel, network, open files, env, tree, and peekd are Linux-only. The table below is the source of truth.
 
 | Feature | Linux | macOS | Windows |
 |--------|-------|-------|--------|
@@ -378,17 +419,19 @@ cargo build --release --workspace
 
 ## Documentation
 
-- **Questions and community:** [GitHub Discussions](https://github.com/ankittk/peek/discussions)
-- **Architecture and peekd IPC:** [docs/architecture.md](docs/architecture.md)
-- **Daemon and alerts:** [docs/peekd.md](docs/peekd.md)
-- **Scripting and automation:** [docs/scripting.md](docs/scripting.md)
-- **FAQ:** [docs/faq.md](docs/faq.md)
-- **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md)
-- **Security:** [SECURITY.md](SECURITY.md)
-- **Code of conduct:** [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+| Link | Description |
+|------|-------------|
+| [GitHub Discussions](https://github.com/ankittk/peek/discussions) | Questions and community |
+| [docs/architecture.md](docs/architecture.md) | Architecture and peekd IPC |
+| [docs/peekd.md](docs/peekd.md) | Daemon and alerts |
+| [docs/scripting.md](docs/scripting.md) | Scripting and automation |
+| [docs/faq.md](docs/faq.md) | FAQ |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Contributing |
+| [SECURITY.md](SECURITY.md) | Security |
+| [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | Code of conduct |
 
 ---
 
 ## License
 
-MIT License. See [LICENSE](LICENSE).
+**MIT License.** See [LICENSE](LICENSE).
