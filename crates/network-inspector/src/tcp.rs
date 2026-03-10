@@ -5,8 +5,7 @@
 // `NetworkInfo`, `SocketEntry`, and `ConnectionEntry` types.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::net::{Ipv4Addr, Ipv6Addr};
 
 /// One-pass: read /proc/net/{tcp,udp,tcp6,udp6} once and return inode -> (kind, local, remote) for the given port.
@@ -177,6 +176,136 @@ pub fn process_socket_inodes(pid: i32) -> HashSet<u64> {
         }
     }
     inodes
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListenerEntry {
+    pub protocol: String,
+    pub port: u16,
+    pub address: String,
+    pub process_name: String,
+    pub pid: Option<i32>,
+}
+
+/// Collect all listening TCP/UDP sockets on the system by:
+/// - scanning /proc/net/{tcp,udp,tcp6,udp6} for LISTEN/UNCONN states
+/// - building an inode -> (pid, process_name) map from /proc/*/fd
+///
+/// Errors from individual /proc entries are ignored so that missing PIDs,
+/// permission issues, or short-lived processes do not fail the entire scan.
+pub fn collect_all_listeners() -> Vec<ListenerEntry> {
+    let inode_map = build_inode_process_map();
+    let mut listeners = Vec::new();
+
+    for &is_v6 in &[false, true] {
+        for &udp in &[false, true] {
+            let proto = match (is_v6, udp) {
+                (false, false) => "TCP",
+                (false, true) => "UDP",
+                (true, false) => "TCP6",
+                (true, true) => "UDP6",
+            };
+            let path = match (is_v6, udp) {
+                (false, false) => "/proc/net/tcp",
+                (false, true) => "/proc/net/udp",
+                (true, false) => "/proc/net/tcp6",
+                (true, true) => "/proc/net/udp6",
+            };
+
+            let raw = match std::fs::read_to_string(path) {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+
+            for line in raw.lines().skip(1) {
+                let fields: Vec<&str> = line.split_whitespace().collect();
+                if fields.len() < 10 {
+                    continue;
+                }
+
+                let inode: u64 = match fields[9].parse() {
+                    Ok(i) => i,
+                    Err(_) => continue,
+                };
+
+                let local = parse_addr(fields[1], is_v6);
+                let state_hex = u8::from_str_radix(fields[3], 16).unwrap_or(0);
+                let state = tcp_state(state_hex);
+
+                // For UDP, "listening" sockets are usually in UNCONN state (CLOSE here).
+                let is_listen = if udp {
+                    state == "CLOSE"
+                } else {
+                    state == "LISTEN"
+                };
+
+                if !is_listen {
+                    continue;
+                }
+
+                let (pid, name) = inode_map
+                    .get(&inode)
+                    .cloned()
+                    .unwrap_or((None, String::from("?")));
+
+                listeners.push(ListenerEntry {
+                    protocol: proto.to_string(),
+                    port: local.1,
+                    address: local.0,
+                    process_name: name,
+                    pid,
+                });
+            }
+        }
+    }
+
+    listeners
+}
+
+fn build_inode_process_map() -> HashMap<u64, (Option<i32>, String)> {
+    let mut map = HashMap::new();
+
+    let proc_dir = match std::fs::read_dir("/proc") {
+        Ok(d) => d,
+        Err(_) => return map,
+    };
+
+    for entry in proc_dir.flatten() {
+        let file_name = entry.file_name();
+        let pid_str = match file_name.to_str() {
+            Some(s) => s,
+            None => continue,
+        };
+        let pid: i32 = match pid_str.parse() {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+
+        let fd_dir = match std::fs::read_dir(format!("/proc/{}/fd", pid)) {
+            Ok(d) => d,
+            Err(_) => continue,
+        };
+
+        let comm = std::fs::read_to_string(format!("/proc/{}/comm", pid))
+            .ok()
+            .map(|s| s.trim().to_string())
+            .unwrap_or_else(|| pid.to_string());
+
+        for fd in fd_dir.flatten() {
+            let target = match std::fs::read_link(fd.path()) {
+                Ok(t) => t,
+                Err(_) => continue,
+            };
+            let s = target.to_string_lossy();
+            if let Some(inode_str) = s.strip_prefix("socket:[").and_then(|s| s.strip_suffix(']')) {
+                if let Ok(inode) = inode_str.parse::<u64>() {
+                    map.entry(inode).or_insert((Some(pid), comm.clone()));
+                }
+            }
+        }
+    }
+
+    map
 }
 
 /// Parse hex address:port like "0100007F:1F40" into ("127.0.0.1", 8000).

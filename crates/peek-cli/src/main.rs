@@ -109,6 +109,12 @@ fn run(cli_args: &Cli) -> Result<()> {
         return run_port_search(port);
     }
 
+    // Live port monitor TUI (Linux-only, no target required)
+    #[cfg(target_os = "linux")]
+    if cli.listen {
+        return tui::port_monitor::run_port_monitor();
+    }
+
     // Alert management (requires peekd; no target for list/remove)
     if cli.alert_list {
         return run_alert_list();

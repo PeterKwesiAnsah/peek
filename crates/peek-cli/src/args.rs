@@ -157,6 +157,25 @@ pub struct Cli {
     /// Search for processes listening on or connected to a TCP/UDP PORT
     #[arg(long, value_name = "PORT")]
     pub port: Option<u16>,
+
+    /// Live port monitor TUI for all listening TCP/UDP sockets
+    #[arg(
+        long,
+        conflicts_with_all = [
+            "watch",
+            "json",
+            "json_snapshot",
+            "export",
+            "kill",
+            "history",
+            "alert_list",
+            "alert_add",
+            "alert_remove",
+            "diff",
+            "port"
+        ]
+    )]
+    pub listen: bool,
 }
 
 #[cfg(test)]

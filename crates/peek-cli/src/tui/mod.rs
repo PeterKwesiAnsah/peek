@@ -1,4 +1,6 @@
 mod app;
+#[cfg(target_os = "linux")]
+pub mod port_monitor;
 pub(crate) mod ui;
 
 use std::io;

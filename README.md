@@ -125,8 +125,11 @@ peek nginx
 # Full picture (resources, kernel, network, files, env, tree)
 peek nginx --all
 
-# Live-updating TUI
+# Live-updating per-process TUI
 peek nginx --all --watch
+
+# Live port monitor TUI (all listening TCP/UDP sockets)
+peek --listen
 
 # Kill / signal panel (with impact analysis)
 peek nginx --kill
@@ -209,6 +212,7 @@ peek 1234 --export pdf                  # PDF (needs wkhtmltopdf, weasyprint, or
 peek --port 443           # find processes using port 443 (TCP/UDP)
 peek nginx --kill         # interactive signal/kill panel with impact analysis
 peek nginx --kill --sudo  # re-exec with sudo for root-owned processes
+peek --listen             # live port monitor TUI for all listening TCP/UDP sockets
 ```
 
 ### History and alerts (requires `peekd`)
